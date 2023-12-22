@@ -16,12 +16,21 @@ var (
 	runningCmd *exec.Cmd
 )
 
+const (
+	colorGreen = "\033[0;32m"
+	colorRed   = "\033[0;31m"
+	colorNone  = "\033[0m"
+)
+
 func developmentServer(cmd *cobra.Command, args []string) {
 	_, err := os.Stat(".raptor.toml")
 	if err != nil {
 		fmt.Println("Please run this command in the root of Raptor project")
 		os.Exit(1)
 	}
+
+	fmt.Println("Starting Raptor development server with 🔥 hot reload 🔥")
+	rebuildAndStart()
 
 	setWatcher()
 	defer watcher.Close()
@@ -34,9 +43,7 @@ func developmentServer(cmd *cobra.Command, args []string) {
 					if watcher != nil {
 						watcher.Close()
 					}
-					if build() == nil {
-						start()
-					}
+					rebuildAndStart()
 					setWatcher()
 				}
 			case err := <-watcher.Errors:
@@ -70,7 +77,8 @@ func watchDir(path string, info os.FileInfo, err error) error {
 }
 
 func build() error {
-	fmt.Println("Building...")
+	stop()
+	fmt.Println("Rebuilding application... 🏗️")
 	cmd := exec.Command("go", "build", "-o", "raptorapp")
 	cmd.Dir = "."
 	cmd.Stdout = os.Stdout
@@ -79,18 +87,6 @@ func build() error {
 }
 
 func start() {
-	fmt.Println("Starting...")
-	if runningCmd != nil && runningCmd.Process != nil {
-		fmt.Println("Killing process...")
-		err := runningCmd.Process.Signal(os.Interrupt)
-		if err != nil {
-			fmt.Println("Error killing process:", err)
-			os.Exit(1)
-		}
-		fmt.Println("Waiting for process to exit...")
-		err = runningCmd.Wait()
-	}
-
 	runningCmd = exec.Command("./raptorapp")
 	runningCmd.Dir = "."
 	runningCmd.Stdout = os.Stdout
@@ -100,6 +96,28 @@ func start() {
 	if err != nil {
 		fmt.Printf("Error starting: %s\n", err)
 		os.Exit(1)
+	}
+}
+
+func stop() {
+	if runningCmd != nil && runningCmd.Process != nil {
+		if runningCmd.ProcessState != nil && runningCmd.ProcessState.Exited() {
+			return
+		}
+		runningCmd.Process.Signal(os.Interrupt)
+		if err := runningCmd.Wait(); err != nil {
+			fmt.Println("Error waiting for process:", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func rebuildAndStart() {
+	if err := build(); err == nil {
+		fmt.Println(colorGreen, "Build successful ✅", colorNone)
+		start()
+	} else {
+		fmt.Println(colorRed, "Build failed ❌", colorNone)
 	}
 }
 
