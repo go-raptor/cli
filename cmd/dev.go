@@ -33,16 +33,14 @@ func developmentServer(cmd *cobra.Command, args []string) {
 	rebuildAndStart()
 
 	setWatcher()
-	defer watcher.Close()
+	defer unsetWatcher()
 
 	go func() {
 		for {
 			select {
 			case event := <-watcher.Events:
 				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-					if watcher != nil {
-						watcher.Close()
-					}
+					unsetWatcher()
 					rebuildAndStart()
 					setWatcher()
 				}
@@ -62,6 +60,12 @@ func setWatcher() {
 	if err != nil {
 		fmt.Println("Error setting watcher:", err)
 		os.Exit(1)
+	}
+}
+
+func unsetWatcher() {
+	if watcher != nil {
+		watcher.Close()
 	}
 }
 
