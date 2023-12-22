@@ -23,19 +23,21 @@ func developmentServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	watcher, _ = fsnotify.NewWatcher()
+	setWatcher()
 	defer watcher.Close()
-
-	filepath.Walk(".", watchDir)
-
-	//recompileAndRestart()
 
 	go func() {
 		for {
 			select {
 			case event := <-watcher.Events:
 				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-					recompileAndRestart()
+					if watcher != nil {
+						watcher.Close()
+					}
+					if build() == nil {
+						start()
+					}
+					setWatcher()
 				}
 			case err := <-watcher.Errors:
 				fmt.Println("Error:", err)
@@ -43,13 +45,17 @@ func developmentServer(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	err = watcher.Add(".")
+	select {}
+}
+
+func setWatcher() {
+	watcher, _ = fsnotify.NewWatcher()
+	filepath.Walk(".", watchDir)
+	err := watcher.Add(".")
 	if err != nil {
-		fmt.Println("Error:", err)
+		fmt.Println("Error setting watcher:", err)
 		os.Exit(1)
 	}
-
-	select {}
 }
 
 func watchDir(path string, info os.FileInfo, err error) error {
@@ -63,42 +69,40 @@ func watchDir(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
-func recompileAndRestart() {
-	fmt.Println("File changed. Recompiling and restarting...")
-	watcher.Close()
+func build() error {
+	fmt.Println("Building...")
+	cmd := exec.Command("go", "build", "-o", "raptorapp")
+	cmd.Dir = "."
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
 
+func start() {
+	fmt.Println("Starting...")
 	if runningCmd != nil && runningCmd.Process != nil {
 		fmt.Println("Killing process...")
 		err := runningCmd.Process.Signal(os.Interrupt)
 		if err != nil {
 			fmt.Println("Error killing process:", err)
-			fmt.Println("Restart aborted.")
 			os.Exit(1)
 		}
 		fmt.Println("Waiting for process to exit...")
 		err = runningCmd.Wait()
 	}
 
-	runningCmd = exec.Command("go", "run", "main.go")
+	runningCmd = exec.Command("./raptorapp")
 	runningCmd.Dir = "."
 	runningCmd.Stdout = os.Stdout
 	runningCmd.Stderr = os.Stderr
 	err := runningCmd.Start()
 
 	if err != nil {
-		fmt.Printf("Error compiling: %s\n", err)
-		fmt.Println("Restart aborted.")
-		return
+		fmt.Printf("Error starting: %s\n", err)
+		os.Exit(1)
 	}
-
-	fmt.Println("Successfully recompiled and restarted.")
-
-	watcher, _ = fsnotify.NewWatcher()
-	filepath.Walk(".", watchDir)
-	watcher.Add(".")
 }
 
-// devCmd represents the dev command
 var devCmd = &cobra.Command{
 	Use:   "dev",
 	Short: "Start the development server",
