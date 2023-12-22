@@ -30,6 +30,7 @@ func developmentServer(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("Starting Raptor development server with 🔥 hot reload 🔥")
+	prepareBinDirectory()
 	rebuildAndStart()
 
 	setWatcher()
@@ -80,10 +81,16 @@ func watchDir(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
+func prepareBinDirectory() {
+	if _, err := os.Stat("bin"); os.IsNotExist(err) {
+		os.Mkdir("bin", 0755)
+	}
+}
+
 func build() error {
 	stop()
 	fmt.Println("Rebuilding application... 🏗️")
-	cmd := exec.Command("go", "build", "-o", "raptorapp")
+	cmd := exec.Command("go", "build", "-o", "bin/raptorapp")
 	cmd.Dir = "."
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -91,7 +98,7 @@ func build() error {
 }
 
 func start() {
-	runningCmd = exec.Command("./raptorapp")
+	runningCmd = exec.Command("bin/raptorapp")
 	runningCmd.Dir = "."
 	runningCmd.Stdout = os.Stdout
 	runningCmd.Stderr = os.Stderr
