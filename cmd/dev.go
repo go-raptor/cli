@@ -118,10 +118,10 @@ func stop() {
 
 func rebuildAndStart() {
 	if err := build(); err == nil {
-		fmt.Println(colorGreen, "Build successful ✅", colorNone)
+		fmt.Printf("%sBuild successful ✅%s\n", colorGreen, colorNone)
 		start()
 	} else {
-		fmt.Println(colorRed, "Build failed ❌", colorNone)
+		fmt.Printf("%sBuild failed ❌%s\n", colorRed, colorNone)
 	}
 }
 
