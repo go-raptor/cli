@@ -98,7 +98,9 @@ func build() error {
 }
 
 func start() {
+	env := []string{"RAPTOR_DEVELOPMENT=true"}
 	runningCmd = exec.Command("bin/raptorapp")
+	runningCmd.Env = append(os.Environ(), env...)
 	runningCmd.Dir = "."
 	runningCmd.Stdout = os.Stdout
 	runningCmd.Stderr = os.Stderr
