@@ -120,7 +120,6 @@ func stop() {
 		runningCmd.Process.Signal(os.Interrupt)
 		if err := runningCmd.Wait(); err != nil {
 			fmt.Println("Error waiting for process:", err)
-			os.Exit(1)
 		}
 	}
 }
