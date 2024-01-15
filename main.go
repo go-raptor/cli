@@ -1,6 +1,6 @@
 package main
 
-import "github.com/h00s/raptor-cli/cmd"
+import "github.com/go-raptor/raptor-cli/cmd"
 
 func main() {
 	cmd.Execute()
