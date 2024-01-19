@@ -1,4 +1,4 @@
-package cmd
+package dev
 
 import (
 	"fmt"
@@ -21,6 +21,13 @@ const (
 	colorRed   = "\033[0;31m"
 	colorNone  = "\033[0m"
 )
+
+var Cmd = &cobra.Command{
+	Use:   "dev",
+	Short: "Start the development server",
+	Long:  `Start the development server with hot reload.`,
+	Run:   developmentServer,
+}
 
 func developmentServer(cmd *cobra.Command, args []string) {
 	_, err := os.Stat(".raptor.toml")
@@ -131,15 +138,4 @@ func rebuildAndStart() {
 	} else {
 		fmt.Printf("%sBuild failed ❌%s\n", colorRed, colorNone)
 	}
-}
-
-var devCmd = &cobra.Command{
-	Use:   "dev",
-	Short: "Start the development server",
-	Long:  `Start the development server with hot reload.`,
-	Run:   developmentServer,
-}
-
-func init() {
-	rootCmd.AddCommand(devCmd)
 }
