@@ -1,4 +1,4 @@
-module github.com/go-raptor/raptor-cli
+module github.com/go-raptor/cli
 
 go 1.21.5
 
