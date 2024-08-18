@@ -30,7 +30,23 @@ var Cmd = &cobra.Command{
 }
 
 func developmentServer(cmd *cobra.Command, args []string) {
-	_, err := os.Stat(".raptor.dev.toml")
+	configFiles := []string{
+		".raptor.toml",
+		".raptor.conf",
+		".raptor.prod.toml",
+		".raptor.prod.conf",
+		".raptor.dev.toml",
+		".raptor.dev.conf",
+	}
+
+	var err error
+	for _, file := range configFiles {
+		_, err = os.Stat(file)
+		if err == nil {
+			break
+		}
+	}
+
 	if err != nil {
 		fmt.Println("Please run this command in the root of Raptor project")
 		os.Exit(1)
