@@ -1,4 +1,4 @@
-![Raptor](https://kruno.husak.me/img/raptor3.png)
+![Raptor](https://static.husak.me/img/raptor/logo.png)
 
 # Raptor CLI
 
@@ -9,5 +9,5 @@ This is the CLI for Raptor. It is heavily inspired by Buffalo CLI, which is a we
 To install the Raptor CLI you can run the following command:
 
 ```bash
-go install github.com/go-raptor/cli/cmd/raptor
+go install github.com/go-raptor/cli/cmd/raptor@latest
 ```
