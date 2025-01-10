@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"os"
 
@@ -52,9 +53,9 @@ func developmentServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("Starting Raptor development server with 🔥 hot reload 🔥")
+	fmt.Println("Starting 🦖 Raptor development server with 🔥 hot reload 🔥")
 	prepareBinDirectory()
-	rebuildAndStart()
+	rebuild()
 
 	setWatcher()
 	defer unsetWatcher()
@@ -65,7 +66,7 @@ func developmentServer(cmd *cobra.Command, args []string) {
 			case event := <-watcher.Events:
 				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
 					unsetWatcher()
-					rebuildAndStart()
+					rebuild()
 					setWatcher()
 				}
 			case err := <-watcher.Errors:
@@ -110,14 +111,31 @@ func prepareBinDirectory() {
 	}
 }
 
-func build() error {
+func rebuild() error {
 	stop()
-	fmt.Println("Rebuilding application... 🏗️")
+	fmt.Println("🏗️ Rebuilding application...")
 	cmd := exec.Command("go", "build", "-o", "bin/raptorapp")
 	cmd.Dir = "."
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+
+	buildStart := time.Now()
+	err := cmd.Run()
+	buildDuration := time.Since(buildStart)
+
+	if err != nil {
+		fmt.Printf("%s❌ Build failed%s\n", colorRed, colorNone)
+		return err
+	}
+
+	if buildDuration >= time.Second {
+		fmt.Printf("✅ Build completed in %.3fs\n", buildDuration.Seconds())
+	} else {
+		fmt.Printf("✅ Build completed in %dms\n", buildDuration.Milliseconds())
+	}
+	start()
+
+	return nil
 }
 
 func start() {
@@ -144,14 +162,5 @@ func stop() {
 		if err := runningCmd.Wait(); err != nil {
 			fmt.Println("Error waiting for process:", err)
 		}
-	}
-}
-
-func rebuildAndStart() {
-	if err := build(); err == nil {
-		fmt.Printf("%sBuild successful ✅%s\n", colorGreen, colorNone)
-		start()
-	} else {
-		fmt.Printf("%sBuild failed ❌%s\n", colorRed, colorNone)
 	}
 }
