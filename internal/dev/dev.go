@@ -113,7 +113,7 @@ func prepareBinDirectory() {
 
 func rebuild() error {
 	stop()
-	fmt.Println("🏗️ Rebuilding application...")
+	fmt.Println("Rebuilding application... 🏗️")
 	cmd := exec.Command("go", "build", "-o", "bin/raptorapp")
 	cmd.Dir = "."
 	cmd.Stdout = os.Stdout
@@ -124,14 +124,14 @@ func rebuild() error {
 	buildDuration := time.Since(buildStart)
 
 	if err != nil {
-		fmt.Printf("%s❌ Build failed%s\n", colorRed, colorNone)
+		fmt.Printf("%sBuild failed%s ❌\n", colorRed, colorNone)
 		return err
 	}
 
 	if buildDuration >= time.Second {
-		fmt.Printf("✅ Build completed in %.3fs\n", buildDuration.Seconds())
+		fmt.Printf("%sBuild completed in %.3fs%s ✅\n", colorGreen, buildDuration.Seconds(), colorNone)
 	} else {
-		fmt.Printf("✅ Build completed in %dms\n", buildDuration.Milliseconds())
+		fmt.Printf("%sBuild completed in %dms%s ✅\n", colorGreen, buildDuration.Milliseconds(), colorNone)
 	}
 	start()
 
