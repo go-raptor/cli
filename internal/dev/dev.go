@@ -1,9 +1,11 @@
 package dev
 
 import (
+	"bufio"
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"os"
@@ -12,15 +14,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	watcher    *fsnotify.Watcher
-	runningCmd *exec.Cmd
-)
-
 const (
 	colorGreen = "\033[0;32m"
 	colorRed   = "\033[0;31m"
 	colorNone  = "\033[0m"
+)
+
+var (
+	watcher           *fsnotify.Watcher
+	ignoreDirectories []string
+	runningCmd        *exec.Cmd
 )
 
 var Cmd = &cobra.Command{
@@ -30,16 +33,23 @@ var Cmd = &cobra.Command{
 	Run:   developmentServer,
 }
 
-func developmentServer(cmd *cobra.Command, args []string) {
-	configFiles := []string{
-		".raptor.toml",
-		".raptor.conf",
-		".raptor.prod.toml",
-		".raptor.prod.conf",
-		".raptor.dev.toml",
-		".raptor.dev.conf",
-	}
+var defaultIgnoreDirectories = []string{
+	"bin",
+	".git",
+	"tmp",
+	"vendor",
+}
 
+var configFiles = []string{
+	".raptor.conf",
+	".raptor.toml",
+	".raptor.dev.conf",
+	".raptor.dev.toml",
+	".raptor.prod.conf",
+	".raptor.prod.toml",
+}
+
+func developmentServer(cmd *cobra.Command, args []string) {
 	var err error
 	for _, file := range configFiles {
 		_, err = os.Stat(file)
@@ -79,11 +89,30 @@ func developmentServer(cmd *cobra.Command, args []string) {
 }
 
 func setWatcher() {
-	watcher, _ = fsnotify.NewWatcher()
-	filepath.Walk(".", watchDir)
-	err := watcher.Add(".")
+	ignoreDirectories = readRaptorIgnore()
+
+	var err error
+	watcher, err = fsnotify.NewWatcher()
 	if err != nil {
-		fmt.Println("Error setting watcher:", err)
+		fmt.Printf("%sError creating watcher: %v%s\n", colorRed, err, colorNone)
+		os.Exit(1)
+	}
+
+	if err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			fmt.Println("Error:", err)
+			return err
+		}
+
+		if info.IsDir() {
+			if shouldIgnorePath(path, ignoreDirectories) {
+				return filepath.SkipDir
+			}
+			return watcher.Add(path)
+		}
+		return nil
+	}); err != nil {
+		fmt.Printf("%sError walking directory: %v%s\n", colorRed, err, colorNone)
 		os.Exit(1)
 	}
 }
@@ -94,15 +123,54 @@ func unsetWatcher() {
 	}
 }
 
-func watchDir(path string, info os.FileInfo, err error) error {
+func readRaptorIgnore() []string {
+	ignoreDirectories := make([]string, len(defaultIgnoreDirectories), len(defaultIgnoreDirectories)*2)
+	copy(ignoreDirectories, defaultIgnoreDirectories)
+
+	content, err := os.ReadFile(".raptorignore")
 	if err != nil {
-		fmt.Println("Error:", err)
-		return err
+		return ignoreDirectories
 	}
-	if info.IsDir() {
-		return watcher.Add(path)
+
+	existing := make(map[string]bool, len(defaultIgnoreDirectories))
+	for _, dir := range defaultIgnoreDirectories {
+		existing[dir] = true
 	}
-	return nil
+
+	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if !existing[line] {
+			ignoreDirectories = append(ignoreDirectories, line)
+			existing[line] = true
+		}
+	}
+
+	return ignoreDirectories
+}
+
+func shouldIgnorePath(path string, ignoreDirectories []string) bool {
+	for _, pattern := range ignoreDirectories {
+		if strings.Contains(pattern, string(os.PathSeparator)) {
+			if path == pattern {
+				return true
+			}
+			continue
+		}
+
+		matched, err := filepath.Match(pattern, filepath.Base(path))
+		if err != nil {
+			continue
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 func prepareBinDirectory() {

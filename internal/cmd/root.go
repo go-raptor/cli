@@ -9,7 +9,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "raptor",
-	Short: "Go MVC web development eco-system based on Fiber",
+	Short: "Go MVCS web development eco-system based on Echo",
 }
 
 func Execute() {
