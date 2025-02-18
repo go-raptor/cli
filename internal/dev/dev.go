@@ -41,12 +41,15 @@ var defaultIgnoreDirectories = []string{
 }
 
 var configFiles = []string{
+	".raptor.yaml",
+	".raptor.yml",
 	".raptor.conf",
-	".raptor.toml",
-	".raptor.dev.conf",
-	".raptor.dev.toml",
+	".raptor.prod.yaml",
+	".raptor.prod.yml",
 	".raptor.prod.conf",
-	".raptor.prod.toml",
+	".raptor.dev.yaml",
+	".raptor.dev.yml",
+	".raptor.dev.conf",
 }
 
 func developmentServer(cmd *cobra.Command, args []string) {
