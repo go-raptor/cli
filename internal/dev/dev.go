@@ -63,7 +63,7 @@ func developmentServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("Starting 🦖 Raptor development server with 🔥 hot reload 🔥")
+	fmt.Println("Starting 🦖 Raptor development server with live reload ⚡")
 	prepareBinDirectory()
 	rebuild()
 
