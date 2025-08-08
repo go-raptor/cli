@@ -3,12 +3,12 @@ package dev
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
-
-	"os"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
@@ -24,6 +24,7 @@ var (
 	watcher           *fsnotify.Watcher
 	ignoreDirectories []string
 	runningCmd        *exec.Cmd
+	binaryPath        string
 )
 
 var Cmd = &cobra.Command{
@@ -52,6 +53,14 @@ var configFiles = []string{
 	".raptor.dev.conf",
 }
 
+func init() {
+	binaryName := "raptorapp"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	binaryPath = filepath.Join("bin", binaryName)
+}
+
 func developmentServer(cmd *cobra.Command, args []string) {
 	var err error
 	for _, file := range configFiles {
@@ -76,13 +85,19 @@ func developmentServer(cmd *cobra.Command, args []string) {
 	go func() {
 		for {
 			select {
-			case event := <-watcher.Events:
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
 				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
 					unsetWatcher()
 					rebuild()
 					setWatcher()
 				}
-			case err := <-watcher.Errors:
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
 				fmt.Println("Error:", err)
 			}
 		}
@@ -157,19 +172,12 @@ func readRaptorIgnore() []string {
 }
 
 func shouldIgnorePath(path string, ignoreDirectories []string) bool {
+	normalizedPath := filepath.ToSlash(path)
 	for _, pattern := range ignoreDirectories {
-		if strings.Contains(pattern, string(os.PathSeparator)) {
-			if path == pattern {
-				return true
-			}
-			continue
-		}
+		normalizedPattern := filepath.ToSlash(pattern)
+		base := filepath.Base(normalizedPath)
 
-		matched, err := filepath.Match(pattern, filepath.Base(path))
-		if err != nil {
-			continue
-		}
-		if matched {
+		if normalizedPath == normalizedPattern || base == normalizedPattern {
 			return true
 		}
 	}
@@ -185,7 +193,7 @@ func prepareBinDirectory() {
 func rebuild() error {
 	stop()
 	fmt.Println("Rebuilding application... 🏗️")
-	cmd := exec.Command("go", "build", "-o", "bin/raptorapp")
+	cmd := exec.Command("go", "build", "-o", binaryPath)
 	cmd.Dir = "."
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -210,9 +218,7 @@ func rebuild() error {
 }
 
 func start() {
-	env := []string{"RAPTOR_DEVELOPMENT=true"}
-	runningCmd = exec.Command("bin/raptorapp")
-	runningCmd.Env = append(os.Environ(), env...)
+	runningCmd = exec.Command(binaryPath)
 	runningCmd.Dir = "."
 	runningCmd.Stdout = os.Stdout
 	runningCmd.Stderr = os.Stderr
@@ -229,9 +235,13 @@ func stop() {
 		if runningCmd.ProcessState != nil && runningCmd.ProcessState.Exited() {
 			return
 		}
-		runningCmd.Process.Signal(os.Interrupt)
+		if err := runningCmd.Process.Signal(os.Interrupt); err != nil {
+			runningCmd.Process.Kill()
+		}
 		if err := runningCmd.Wait(); err != nil {
-			fmt.Println("Error waiting for process:", err)
+			if !strings.Contains(err.Error(), "interrupt") {
+				fmt.Println("Error waiting for process to stop:", err)
+			}
 		}
 	}
 }
