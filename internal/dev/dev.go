@@ -25,10 +25,11 @@ const (
 var binaryPath string
 
 var Cmd = &cobra.Command{
-	Use:   "dev",
-	Short: "Start the development server",
-	Long:  `Start the development server with hot reload.`,
-	Run:   developmentServer,
+	Use:     "dev",
+	Aliases: []string{"server"},
+	Short:   "Start the development server",
+	Long:    `Start the development server with live reload.`,
+	Run:     developmentServer,
 }
 
 var defaultIgnoreDirectories = []string{
