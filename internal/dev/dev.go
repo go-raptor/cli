@@ -26,7 +26,7 @@ var binaryPath string
 
 var Cmd = &cobra.Command{
 	Use:     "dev",
-	Aliases: []string{"server"},
+	Aliases: []string{"server", "serve", "s"},
 	Short:   "Start the development server",
 	Long:    `Start the development server with live reload.`,
 	Run:     developmentServer,
