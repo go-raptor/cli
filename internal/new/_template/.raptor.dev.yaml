@@ -1,0 +1,9 @@
+general:
+  log_level: debug
+
+server:
+  address: "localhost"
+  port: 3000
+
+app:
+  cors_allow_origins: "*"

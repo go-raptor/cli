@@ -1,0 +1,5 @@
+routes:
+  /api/v1:
+    /hello:
+      GET: Hello.Greet
+      POST: Hello.AddGreetings
