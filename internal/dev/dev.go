@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/go-raptor/cli/internal/project"
 	"github.com/spf13/cobra"
 )
 
@@ -39,18 +40,6 @@ var defaultIgnoreDirectories = []string{
 	"vendor",
 }
 
-var configFiles = []string{
-	".raptor.yaml",
-	".raptor.yml",
-	".raptor.conf",
-	".raptor.prod.yaml",
-	".raptor.prod.yml",
-	".raptor.prod.conf",
-	".raptor.dev.yaml",
-	".raptor.dev.yml",
-	".raptor.dev.conf",
-}
-
 func init() {
 	binaryName := "raptorapp"
 	if runtime.GOOS == "windows" {
@@ -59,18 +48,9 @@ func init() {
 	binaryPath = filepath.Join("bin", binaryName)
 }
 
-func isRaptorProject() bool {
-	for _, file := range configFiles {
-		if _, err := os.Stat(file); err == nil {
-			return true
-		}
-	}
-	return false
-}
-
 func developmentServer(cmd *cobra.Command, args []string) {
-	if !isRaptorProject() {
-		fmt.Println("Please run this command in the root of Raptor project")
+	if err := project.FindRoot(); err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 

@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/go-raptor/cli/internal/dev"
+	"github.com/go-raptor/cli/internal/generate"
 	newcmd "github.com/go-raptor/cli/internal/new"
 	"github.com/go-raptor/cli/internal/version"
 	"github.com/spf13/cobra"
@@ -16,6 +17,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	rootCmd.AddCommand(dev.Cmd)
+	rootCmd.AddCommand(generate.Cmd)
 	rootCmd.AddCommand(newcmd.Cmd)
 	rootCmd.AddCommand(version.Cmd)
 	err := rootCmd.Execute()
