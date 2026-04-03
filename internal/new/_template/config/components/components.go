@@ -4,10 +4,10 @@ import (
 	"github.com/go-raptor/raptor/v4"
 )
 
-func New(c *raptor.Config) *raptor.Components {
+func New() *raptor.Components {
 	return &raptor.Components{
-		Services:    Services(c),
-		Middlewares: Middlewares(c),
+		Services:    Services(),
+		Middlewares: Middlewares(),
 		Controllers: Controllers(),
 	}
 }

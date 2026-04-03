@@ -14,25 +14,25 @@ type HelloController struct {
 	Hello *services.HelloService
 }
 
-func (hc *HelloController) Greet(c *raptor.Context) error {
+func (c *HelloController) Greet(ctx *raptor.Context) error {
 	greeting := map[string]interface{}{
-		"message":   hc.Hello.Greeting(),
-		"greetings": hc.Hello.Greetings(),
+		"message":   c.Hello.Greeting(),
+		"greetings": c.Hello.Greetings(),
 	}
 
-	return c.Data(greeting)
+	return ctx.Data(greeting)
 }
 
-func (hc *HelloController) AddGreetings(c *raptor.Context) error {
+func (c *HelloController) AddGreetings(ctx *raptor.Context) error {
 	var request struct {
 		Greeting string `json:"greeting"`
 	}
 
-	if err := c.Bind(&request); err != nil {
+	if err := ctx.Bind(&request); err != nil {
 		return errs.NewErrorBadRequest("invalid request")
 	}
 
-	hc.Hello.AddGreeting(request.Greeting)
+	c.Hello.AddGreeting(request.Greeting)
 
-	return c.Status(http.StatusCreated)
+	return ctx.Status(http.StatusCreated)
 }

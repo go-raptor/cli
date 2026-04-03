@@ -10,20 +10,23 @@ type HelloService struct {
 	greetings []string
 }
 
-func NewHelloService() *HelloService {
-	return &HelloService{
-		greetings: []string{},
-	}
+func (s *HelloService) Setup() error {
+	s.greetings = []string{}
+	return nil
 }
 
-func (hs *HelloService) Greeting() string {
+func (s *HelloService) Cleanup() error {
+	return nil
+}
+
+func (s *HelloService) Greeting() string {
 	return "Hello, World!"
 }
 
-func (hs *HelloService) Greetings() []string {
-	return hs.greetings
+func (s *HelloService) Greetings() []string {
+	return s.greetings
 }
 
-func (hs *HelloService) AddGreeting(greeting string) {
-	hs.greetings = append(hs.greetings, greeting)
+func (s *HelloService) AddGreeting(greeting string) {
+	s.greetings = append(s.greetings, greeting)
 }

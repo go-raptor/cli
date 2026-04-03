@@ -11,17 +11,11 @@ import (
 	"github.com/lmittmann/tint"
 )
 
-func Middlewares(c *raptor.Config) raptor.Middlewares {
+func Middlewares() raptor.Middlewares {
 	return raptor.Middlewares{
 		core.Use(logger.New(func(level *slog.LevelVar) slog.Handler {
 			return tint.NewHandler(os.Stderr, &tint.Options{Level: level})
 		})),
-		core.Use(cors.NewCORSMiddleware(cors.CORSConfig{
-			AllowOrigins:     []string{c.AppConfig["cors_allow_origins"]},
-			AllowMethods:     cors.DefaultCORSConfig.AllowMethods,
-			AllowHeaders:     cors.DefaultCORSConfig.AllowHeaders,
-			AllowCredentials: true,
-			MaxAge:           3600,
-		})),
+		core.Use(&cors.CORSMiddleware{}),
 	}
 }

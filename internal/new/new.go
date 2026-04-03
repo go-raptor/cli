@@ -58,12 +58,6 @@ func newProject(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("Initializing git repository... 🗃️")
-	if err := runInDir(projectDir, "git", "init"); err != nil {
-		fmt.Printf("Error initializing git: %v\n", err)
-		os.Exit(1)
-	}
-
 	fmt.Printf("\n✅ Project %s created successfully!\n\n", projectDir)
 	fmt.Println("Get started:")
 	fmt.Printf("  cd %s\n", projectDir)

@@ -7,8 +7,5 @@ import (
 )
 
 func main() {
-	app := raptor.New()
-	app.Configure(components.New(app.Core.Resources.Config))
-	app.RegisterRoutes(config.Routes())
-	app.Run()
+	raptor.New(components.New(), config.Routes()).Run()
 }
