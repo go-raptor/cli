@@ -15,7 +15,7 @@ type HelloController struct {
 }
 
 func (c *HelloController) Greet(ctx *raptor.Context) error {
-	greeting := map[string]interface{}{
+	greeting := map[string]any{
 		"message":   c.Hello.Greeting(),
 		"greetings": c.Hello.Greetings(),
 	}
