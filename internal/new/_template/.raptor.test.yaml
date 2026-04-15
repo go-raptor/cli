@@ -1,0 +1,6 @@
+general:
+  log_level: error
+
+server:
+  address: "localhost"
+  port: 3001

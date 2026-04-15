@@ -101,6 +101,8 @@ type %s struct {
 	} else {
 		fmt.Printf("Registered %s in config/components/controllers.go\n", structName)
 	}
+
+	generateControllerTest(moduleName, dir, snakeName, structName)
 }
 
 func generateService(moduleName, snakeName, pascalName string) {
@@ -138,6 +140,8 @@ func (s *%s) Cleanup() error {
 	} else {
 		fmt.Printf("Registered %s in config/components/services.go\n", structName)
 	}
+
+	generateServiceTest(moduleName, dir, snakeName, structName)
 }
 
 func generateMiddleware(snakeName, pascalName string) {
@@ -327,4 +331,64 @@ func toPascalCase(s string) string {
 		}
 	}
 	return strings.Join(parts, "")
+}
+
+func ensureTestSetup(moduleName, dir, packageName string) {
+	setupPath := filepath.Join(dir, "setup_test.go")
+	if _, err := os.Stat(setupPath); err == nil {
+		return
+	}
+
+	content := fmt.Sprintf(`package %s_test
+
+import (
+	"os"
+	"testing"
+
+	"github.com/go-raptor/raptor/v4"
+	"%s/config"
+	"%s/config/components"
+)
+
+var app *raptor.Raptor
+
+func TestMain(m *testing.M) {
+	app = raptor.NewTestApp(components.New(), config.Routes())
+	os.Exit(m.Run())
+}
+`, packageName, moduleName, moduleName)
+
+	if err := os.WriteFile(setupPath, []byte(content), 0644); err != nil {
+		fmt.Printf("Error creating %s: %v\n", setupPath, err)
+		return
+	}
+	fmt.Printf("Created %s\n", setupPath)
+}
+
+func generateControllerTest(moduleName, dir, snakeName, structName string) {
+	ensureTestSetup(moduleName, dir, "controllers")
+
+	testFileName := snakeName + "_controller_test.go"
+	testContent := fmt.Sprintf(`package controllers_test
+`)
+
+	if err := writeComponent(dir, testFileName, testContent); err != nil {
+		fmt.Printf("Error creating controller test: %v\n", err)
+		return
+	}
+	fmt.Printf("Created %s\n", filepath.Join(dir, testFileName))
+}
+
+func generateServiceTest(moduleName, dir, snakeName, structName string) {
+	ensureTestSetup(moduleName, dir, "services")
+
+	testFileName := snakeName + "_service_test.go"
+	testContent := fmt.Sprintf(`package services_test
+`)
+
+	if err := writeComponent(dir, testFileName, testContent); err != nil {
+		fmt.Printf("Error creating service test: %v\n", err)
+		return
+	}
+	fmt.Printf("Created %s\n", filepath.Join(dir, testFileName))
 }
