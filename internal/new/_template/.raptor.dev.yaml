@@ -2,7 +2,7 @@ general:
   log_level: debug
 
 server:
-  address: "127.0.0.1"
+  address: localhost
   port: 3000
   shutdown_timeout: 3
   read_timeout: 0
