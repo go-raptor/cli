@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/go-raptor/cli/internal/db"
 	"github.com/go-raptor/cli/internal/dev"
 	"github.com/go-raptor/cli/internal/generate"
 	newcmd "github.com/go-raptor/cli/internal/new"
@@ -17,6 +18,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
+	rootCmd.AddCommand(db.Cmd)
 	rootCmd.AddCommand(dev.Cmd)
 	rootCmd.AddCommand(generate.Cmd)
 	rootCmd.AddCommand(newcmd.Cmd)
