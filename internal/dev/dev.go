@@ -40,6 +40,13 @@ var defaultIgnoreDirectories = []string{
 	"vendor",
 }
 
+var defaultIgnoreFilePatterns = []string{
+	"*.db",
+	"*.db-wal",
+	"*.db-shm",
+	"*.db-journal",
+}
+
 func init() {
 	binaryName := "raptorapp"
 	if runtime.GOOS == "windows" {
@@ -64,7 +71,7 @@ func developmentServer(cmd *cobra.Command, args []string) {
 
 	rebuild()
 
-	ignoreDirs := readRaptorIgnore()
+	ignoreDirs, ignoreFiles := readRaptorIgnore()
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		fmt.Printf("%sError creating watcher: %v%s\n", colorRed, err, colorNone)
@@ -96,6 +103,9 @@ func developmentServer(cmd *cobra.Command, args []string) {
 							watcher.Add(event.Name)
 						}
 					}
+				}
+				if shouldIgnoreFile(event.Name, ignoreFiles) {
+					continue
 				}
 				debounce.Reset(debounceDuration)
 			}
@@ -132,31 +142,52 @@ func watchDirectories(watcher *fsnotify.Watcher, ignoreDirs []string) {
 	}
 }
 
-func readRaptorIgnore() []string {
-	existing := make(map[string]bool, len(defaultIgnoreDirectories))
-	dirs := make([]string, len(defaultIgnoreDirectories), len(defaultIgnoreDirectories)*2)
-	copy(dirs, defaultIgnoreDirectories)
-	for _, dir := range defaultIgnoreDirectories {
-		existing[dir] = true
-	}
-
+func readRaptorIgnore() (dirs []string, filePatterns []string) {
 	content, err := os.ReadFile(".raptorignore")
 	if err != nil {
-		return dirs
+		return parseRaptorIgnore("")
+	}
+	return parseRaptorIgnore(string(content))
+}
+
+func parseRaptorIgnore(content string) (dirs []string, filePatterns []string) {
+	dirs = make([]string, len(defaultIgnoreDirectories), len(defaultIgnoreDirectories)*2)
+	copy(dirs, defaultIgnoreDirectories)
+	filePatterns = make([]string, len(defaultIgnoreFilePatterns), len(defaultIgnoreFilePatterns)*2)
+	copy(filePatterns, defaultIgnoreFilePatterns)
+
+	seenDirs := make(map[string]bool, len(dirs))
+	for _, d := range dirs {
+		seenDirs[d] = true
+	}
+	seenFiles := make(map[string]bool, len(filePatterns))
+	for _, p := range filePatterns {
+		seenFiles[p] = true
 	}
 
-	for _, line := range strings.Split(string(content), "\n") {
+	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if !existing[line] {
+		if isGlobPattern(line) {
+			if !seenFiles[line] {
+				filePatterns = append(filePatterns, line)
+				seenFiles[line] = true
+			}
+			continue
+		}
+		if !seenDirs[line] {
 			dirs = append(dirs, line)
-			existing[line] = true
+			seenDirs[line] = true
 		}
 	}
 
-	return dirs
+	return dirs, filePatterns
+}
+
+func isGlobPattern(s string) bool {
+	return strings.ContainsAny(s, "*?[")
 }
 
 func shouldIgnorePath(path string, ignoreDirs []string) bool {
@@ -171,9 +202,19 @@ func shouldIgnorePath(path string, ignoreDirs []string) bool {
 	return false
 }
 
+func shouldIgnoreFile(path string, filePatterns []string) bool {
+	base := filepath.Base(path)
+	for _, pattern := range filePatterns {
+		if matched, err := filepath.Match(pattern, base); err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+
 func prepareBinDirectory() {
 	if _, err := os.Stat("bin"); os.IsNotExist(err) {
-		os.Mkdir("bin", 0755)
+		os.Mkdir("bin", 0o755)
 	}
 }
 
