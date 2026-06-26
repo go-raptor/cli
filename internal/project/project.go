@@ -4,23 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/go-raptor/cli/internal/configfiles"
 )
 
-var configFiles = []string{
-	".raptor.yaml",
-	".raptor.yml",
-	".raptor.conf",
-	".raptor.prod.yaml",
-	".raptor.prod.yml",
-	".raptor.prod.conf",
-	".raptor.dev.yaml",
-	".raptor.dev.yml",
-	".raptor.dev.conf",
-}
-
-// FindRoot walks up the directory tree from the current working directory
-// looking for a Raptor config file. If found, it changes the working directory
-// to the project root and returns nil. If not found, it returns an error.
 func FindRoot() error {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -40,8 +28,21 @@ func FindRoot() error {
 	}
 }
 
+func ModuleName() (string, error) {
+	content, err := os.ReadFile("go.mod")
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module ")), nil
+		}
+	}
+	return "", fmt.Errorf("module name not found in go.mod")
+}
+
 func hasConfigFile(dir string) bool {
-	for _, file := range configFiles {
+	for _, file := range configfiles.Runtime {
 		if _, err := os.Stat(filepath.Join(dir, file)); err == nil {
 			return true
 		}

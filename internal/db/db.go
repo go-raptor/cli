@@ -11,5 +11,6 @@ var Cmd = &cobra.Command{
 }
 
 func init() {
+	Cmd.AddCommand(initCmd)
 	Cmd.AddCommand(migrateCmd)
 }
