@@ -75,7 +75,7 @@ func databaseConfigBlock(spec connectorSpec, project string, test bool) string {
 		if test {
 			name = project + "_test"
 		}
-		return fmt.Sprintf("database:\n  host: localhost\n  port: 5432\n  username: postgres\n  password: postgres\n  name: %s\n", name)
+		return fmt.Sprintf("database:\n  host: localhost\n  port: 5432\n  username: postgres\n  # The password comes from DATABASE_PASSWORD; keep credentials out of tracked files.\n  name: %s\n", name)
 	default:
 		return ""
 	}
@@ -190,12 +190,7 @@ func runInit(cmd *cobra.Command, args []string) {
 		fmt.Printf("Registered connector in %s\n", componentsPath)
 	}
 
-	for _, f := range configfiles.Runtime {
-		appendDatabaseConfig(f, databaseConfigBlock(spec, projectName, false))
-	}
-	for _, f := range configfiles.Test {
-		appendDatabaseConfig(f, databaseConfigBlock(spec, projectName, true))
-	}
+	configureDatabase(spec, projectName)
 
 	fmt.Println("Resolving dependencies... 📦")
 	if err := runGoModTidy(); err != nil {
@@ -205,9 +200,23 @@ func runInit(cmd *cobra.Command, args []string) {
 
 	fmt.Println("\n✅ Database support added!")
 	fmt.Println("\nNext steps:")
+	if spec.driver == "postgres" {
+		fmt.Println("  export DATABASE_PASSWORD=<password>  # not stored in the config files")
+	}
 	fmt.Println("  raptor db migrate create <name>   # create your first migration")
 	fmt.Println("  raptor db migrate up              # apply migrations")
 	fmt.Println("  raptor dev")
+}
+
+// configureDatabase adds a database section to each Raptor config file in
+// the working directory.
+func configureDatabase(spec connectorSpec, projectName string) {
+	for _, f := range configfiles.Runtime {
+		appendDatabaseConfig(f, databaseConfigBlock(spec, projectName, false))
+	}
+	for _, f := range configfiles.Test {
+		appendDatabaseConfig(f, databaseConfigBlock(spec, projectName, true))
+	}
 }
 
 func appendDatabaseConfig(path, block string) {
