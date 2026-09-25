@@ -10,5 +10,6 @@ server:
   write_timeout: 0
   idle_timeout: 120
   max_header_bytes: 1048576
-  max_body_bytes: 0
+  # max_body_bytes defaults to 8388608 (8 MB). Raise it only for uploads,
+  # and still check each file's size in the upload endpoint.
   ip_extractor: direct
