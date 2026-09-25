@@ -5,8 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode"
 
+	"github.com/go-raptor/cli/internal/components"
+	"github.com/go-raptor/cli/internal/naming"
 	"github.com/go-raptor/cli/internal/project"
 	"github.com/spf13/cobra"
 )
@@ -59,8 +60,8 @@ func generate(cmd *cobra.Command, args []string) {
 	if suffix, ok := typeSuffixes[componentType]; ok {
 		name = strings.TrimSuffix(name, suffix)
 	}
-	snakeName := toSnakeCase(name)
-	pascalName := toPascalCase(snakeName)
+	snakeName := naming.Snake(name)
+	pascalName := naming.Pascal(snakeName)
 
 	switch componentType {
 	case "controller":
@@ -96,7 +97,7 @@ type %s struct {
 	}
 	fmt.Printf("Created %s\n", filepath.Join(dir, fileName))
 
-	if err := registerComponent(moduleName, "controller", structName); err != nil {
+	if err := components.Register(moduleName, "controller", structName); err != nil {
 		fmt.Printf("Register %s in config/components/controllers.go\n", structName)
 	} else {
 		fmt.Printf("Registered %s in config/components/controllers.go\n", structName)
@@ -135,7 +136,7 @@ func (s *%s) Cleanup() error {
 	}
 	fmt.Printf("Created %s\n", filepath.Join(dir, fileName))
 
-	if err := registerComponent(moduleName, "service", structName); err != nil {
+	if err := components.Register(moduleName, "service", structName); err != nil {
 		fmt.Printf("Register %s in config/components/services.go\n", structName)
 	} else {
 		fmt.Printf("Registered %s in config/components/services.go\n", structName)
@@ -208,85 +209,6 @@ func writeComponent(dir, fileName, content string) error {
 	return os.WriteFile(filePath, []byte(content), 0644)
 }
 
-func registerComponent(moduleName, componentType, structName string) error {
-	var (
-		regFile   string
-		importPkg string
-		marker    string
-		entry     string
-	)
-
-	switch componentType {
-	case "controller":
-		regFile = filepath.Join("config", "components", "controllers.go")
-		importPkg = moduleName + "/app/controllers"
-		marker = "raptor.Controllers{"
-		entry = fmt.Sprintf("&controllers.%s{},", structName)
-	case "service":
-		regFile = filepath.Join("config", "components", "services.go")
-		importPkg = moduleName + "/app/services"
-		marker = "raptor.Services{"
-		entry = fmt.Sprintf("&services.%s{},", structName)
-	default:
-		return fmt.Errorf("unsupported component type for registration: %s", componentType)
-	}
-
-	content, err := os.ReadFile(regFile)
-	if err != nil {
-		return err
-	}
-
-	s := string(content)
-
-	// Check if already registered
-	if strings.Contains(s, structName) {
-		return nil
-	}
-
-	// Add import if missing
-	if !strings.Contains(s, importPkg) {
-		raptorImport := "\"github.com/go-raptor/raptor/v4\""
-		idx := strings.Index(s, raptorImport)
-		if idx == -1 {
-			return fmt.Errorf("could not find raptor import in %s", regFile)
-		}
-		lineEnd := idx + len(raptorImport)
-		s = s[:lineEnd] + fmt.Sprintf("\n\t\"%s\"", importPkg) + s[lineEnd:]
-	}
-
-	// Find the slice literal and insert the entry before its closing brace
-	markerIdx := strings.Index(s, marker)
-	if markerIdx == -1 {
-		return fmt.Errorf("could not find %s in %s", marker, regFile)
-	}
-
-	depth := 0
-	closingIdx := -1
-	for i := markerIdx + strings.Index(marker, "{"); i < len(s); i++ {
-		if s[i] == '{' {
-			depth++
-		}
-		if s[i] == '}' {
-			depth--
-			if depth == 0 {
-				closingIdx = i
-				break
-			}
-		}
-	}
-
-	if closingIdx == -1 {
-		return fmt.Errorf("could not find closing brace for %s", marker)
-	}
-
-	// Insert entry before the closing brace
-	nlIdx := strings.LastIndex(s[:closingIdx], "\n")
-	newEntry := fmt.Sprintf("\t\t%s\n", entry)
-	s = s[:nlIdx+1] + newEntry + s[nlIdx+1:]
-
-	return os.WriteFile(regFile, []byte(s), 0644)
-}
-
 func getModuleName() (string, error) {
 	content, err := os.ReadFile("go.mod")
 	if err != nil {
@@ -298,39 +220,6 @@ func getModuleName() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("module name not found in go.mod")
-}
-
-func toSnakeCase(s string) string {
-	var result []rune
-	runes := []rune(s)
-	for i, r := range runes {
-		if unicode.IsUpper(r) {
-			if i > 0 {
-				prev := runes[i-1]
-				if unicode.IsLower(prev) || unicode.IsDigit(prev) {
-					result = append(result, '_')
-				} else if unicode.IsUpper(prev) && i+1 < len(runes) && unicode.IsLower(runes[i+1]) {
-					result = append(result, '_')
-				}
-			}
-			result = append(result, unicode.ToLower(r))
-		} else if r == '_' {
-			result = append(result, r)
-		} else {
-			result = append(result, r)
-		}
-	}
-	return string(result)
-}
-
-func toPascalCase(s string) string {
-	parts := strings.Split(s, "_")
-	for i, p := range parts {
-		if len(p) > 0 {
-			parts[i] = strings.ToUpper(p[:1]) + p[1:]
-		}
-	}
-	return strings.Join(parts, "")
 }
 
 func ensureTestSetup(moduleName, dir, packageName string) {
