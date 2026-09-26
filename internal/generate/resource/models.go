@@ -27,6 +27,12 @@ type ModelField struct {
 	Embed string
 	// ViaPointer is the first pointer embed on that path ("*Base"), or "".
 	ViaPointer string
+	// Selector reaches the field from a model value the way Go promotes it: "UserID" through
+	// anonymous embeds, "Own.UserID" through a named bun:"embed:" field.
+	Selector string
+	// Depth counts the anonymous embeds between the field and Selector's struct; Go selects a
+	// promoted name only when it is the one field so named at the shallowest depth.
+	Depth int
 }
 
 // Model is a struct in app/models that embeds bun.BaseModel.
@@ -178,16 +184,27 @@ func modelFromStruct(name string, structs map[string]structDecl) *Model {
 }
 
 // embedding is where addFields is inside the model: the Go path of the embedded struct, the
-// column prefix of a bun:"embed:" field, and the structs already being expanded.
+// selector that reaches it and the anonymous depth below that, the column prefix of a
+// bun:"embed:" field, and the structs already being expanded.
 type embedding struct {
-	path, pointer, prefix string
-	within                map[string]bool
+	path, pointer, prefix, selector string
+	depth                           int
+	within                          map[string]bool
 }
 
-func (e embedding) enter(field, typ, prefix string, pointer bool) embedding {
-	next := embedding{path: field, pointer: e.pointer, prefix: e.prefix + prefix, within: map[string]bool{typ: true}}
-	if e.path != "" {
-		next.path = e.path + "." + field
+func join(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	return prefix + "." + name
+}
+
+func (e embedding) enter(field, typ, prefix string, pointer, named bool) embedding {
+	next := embedding{path: join(e.path, field), pointer: e.pointer, prefix: e.prefix + prefix, within: map[string]bool{typ: true}}
+	if named { // Go doesn't promote through a named field: the selector names it
+		next.selector = join(e.selector, field)
+	} else {
+		next.selector, next.depth = e.selector, e.depth+1
 	}
 	if pointer && next.pointer == "" {
 		next.pointer = "*" + typ
@@ -203,6 +220,9 @@ func (m *Model) addFields(sd structDecl, structs map[string]structDecl, at embed
 		tag := bunTag(f.Tag)
 		if tag == "-" {
 			continue
+		}
+		if len(f.Names) > 0 && !f.Names[0].IsExported() {
+			continue // Bun skips unexported fields that aren't embedded
 		}
 		embedPrefix, embedded := bunOption(tag, "embed")
 		if len(f.Names) == 0 || embedded {
@@ -222,12 +242,15 @@ func (m *Model) addFields(sd structDecl, structs map[string]structDecl, at embed
 			if len(f.Names) > 0 {
 				field = f.Names[0].Name
 			}
-			m.addFields(structs[ident.Name], structs, at.enter(field, ident.Name, embedPrefix, pointer))
+			m.addFields(structs[ident.Name], structs, at.enter(field, ident.Name, embedPrefix, pointer, len(f.Names) > 0))
 			continue
 		}
 		goType := types.ExprString(f.Type)
 		for _, n := range f.Names {
-			mf := ModelField{GoName: n.Name, GoType: goType, Embed: at.path, ViaPointer: at.pointer}
+			if !n.IsExported() {
+				continue
+			}
+			mf := ModelField{GoName: n.Name, GoType: goType, Embed: at.path, ViaPointer: at.pointer, Selector: join(at.selector, n.Name), Depth: at.depth}
 			switch col, _, _ := strings.Cut(tag, ","); {
 			case strings.Contains(tag, "rel:"):
 				if strings.Contains(tag, "rel:belongs-to") {

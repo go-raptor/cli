@@ -114,3 +114,58 @@ type Sheet struct {
 
 	Holder *Folder `bun:"rel:belongs-to" json:"-"`
 }
+
+// coded is a lowercase mixin; Bun ignores its unexported note, as it ignores any unexported
+// field that isn't embedded.
+type coded struct {
+	Code string `bun:"code,notnull" json:"code"`
+	note string `bun:"note"`
+}
+
+// tagged also declares Code, one level down like coded's.
+type tagged struct {
+	Code string `bun:"tag_code,notnull" json:"tagCode"`
+}
+
+// Room is reference data whose Code comes from a lowercase mixin.
+type Room struct {
+	bun.BaseModel `bun:"table:rooms,alias:rooms"`
+
+	ID int64 `bun:"id,pk,autoincrement" json:"id"`
+	coded
+	Name string `bun:"name,notnull" json:"name"`
+}
+
+// Kiosk promotes Code from two mixins at the same depth, so kiosk.Code is ambiguous.
+type Kiosk struct {
+	bun.BaseModel `bun:"table:kiosks,alias:kiosks"`
+
+	ID int64 `bun:"id,pk,autoincrement" json:"id"`
+	coded
+	tagged
+}
+
+type ownedInner struct {
+	UserID int64 `bun:"user_id,notnull" json:"-"`
+}
+
+// Mid nests the lowercase owner mixin one level deeper.
+type Mid struct {
+	ownedInner
+}
+
+// Box is owned through two levels of embedding, one of them unexported.
+type Box struct {
+	bun.BaseModel `bun:"table:boxes,alias:boxes"`
+
+	ID int64 `bun:"id,pk,autoincrement" json:"id"`
+	Mid
+}
+
+// Locker holds its owner in a named bun:"embed:" field, which Go doesn't promote.
+type Locker struct {
+	bun.BaseModel `bun:"table:lockers,alias:lockers"`
+
+	ID  int64 `bun:"id,pk,autoincrement" json:"id"`
+	Own Owned `bun:"embed:"`
+}

@@ -35,7 +35,7 @@ var numericTypes = map[string]bool{
 func buildSeedModel(idx ModelIndex, m *Model, module string) (*seedModelView, error) {
 	v := naming.Var(m.Name)
 	s := &seedModelView{Module: module, Name: m.Name, Var: localName(v, v+"Item", "userID"), Owned: idx.IsOwned(m.Name)}
-	for _, f := range m.Fields {
+	for i, f := range m.Fields {
 		expr, err := seedExpr(idx, m, f, s)
 		if err != nil {
 			return nil, err
@@ -45,12 +45,32 @@ func buildSeedModel(idx ModelIndex, m *Model, module string) (*seedModelView, er
 		case f.ViaPointer != "":
 			return nil, fmt.Errorf("cannot seed %s.%s: it comes from the embedded pointer %s, which the seed would have to allocate", m.Name, f.GoName, f.ViaPointer)
 		case f.Embed != "":
-			s.Promoted = append(s.Promoted, seedFieldView{f.Embed + "." + f.GoName, expr})
+			if err := selectable(m, i); err != nil {
+				return nil, err
+			}
+			s.Promoted = append(s.Promoted, seedFieldView{f.Selector, expr})
 		default:
 			s.Fields = append(s.Fields, seedFieldView{f.GoName, expr})
 		}
 	}
 	return s, nil
+}
+
+// selectable checks that the promoted field m.Fields[i] can be set as model.Selector from
+// another package: no other field of that name at its depth or above, and no embedded struct the
+// index can't read, which might declare one.
+func selectable(m *Model, i int) error {
+	f := m.Fields[i]
+	if len(m.Unresolved) > 0 {
+		return fmt.Errorf("cannot seed %s.%s: %s also embeds %s, which the generator cannot read and which might declare %s too", m.Name, f.GoName, m.Name, strings.Join(m.Unresolved, ", "), f.GoName)
+	}
+	scope := strings.TrimSuffix(f.Selector, f.GoName)
+	for j, g := range m.Fields {
+		if j != i && g.GoName == f.GoName && strings.TrimSuffix(g.Selector, g.GoName) == scope && g.Depth <= f.Depth {
+			return fmt.Errorf("cannot seed %s.%s: more than one field is named %s at that depth, or a shallower one hides it, so Go cannot select it", m.Name, f.GoName, f.GoName)
+		}
+	}
+	return nil
 }
 
 // seedExpr is the sample value for one field, or "" to leave it at its zero value.
