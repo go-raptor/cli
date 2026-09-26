@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -84,6 +85,35 @@ var generatedIdents = map[string]bool{
 	"raw": true, "path": true, "list": true, "session": true, "owner": true, "stranger": true,
 	"strangerSession": true, "suffix": true, "created": true, "updated": true, "listed": true,
 	"body": true, "reader": true, "opts": true, "encoded": true,
+}
+
+// packageIdents are the packages and package-level helpers the generated files refer to. A
+// resource whose variable would shadow one keeps its name, and its locals get renamed.
+var packageIdents = map[string]bool{
+	"models": true, "services": true, "controllers": true, "components": true, "config": true,
+	"context": true, "json": true, "http": true, "httptest": true, "fmt": true, "time": true,
+	"bytes": true, "io": true, "slices": true, "testing": true, "raptor": true, "errs": true,
+	"strconv": true, "zog": true, "bun": true, "mime": true, "errors": true, "utf8": true,
+	"os": true, "atomic": true, "bcrypt": true, "sql": true, "pgconn": true,
+	"app": true, "db": true, "mustInsert": true, "newUser": true, "login": true, "withSession": true,
+	"newClient": true, "testPassword": true, "clientIPs": true, "bindJSON": true,
+	"validationFailed": true, "pathID": true, "maxChars": true,
+}
+
+// localName is ident, or fallback where ident as a variable would be a Go identifier, a name the
+// generated code already uses, a package or helper it calls, or one of avoid.
+func localName(ident, fallback string, avoid ...string) string {
+	if naming.Reserved(ident) || generatedIdents[ident] || packageIdents[ident] || slices.Contains(avoid, ident) {
+		return fallback
+	}
+	return ident
+}
+
+// takenGoNames are struct members the generated model or request already has.
+var takenGoNames = map[string]string{
+	"BaseModel": "the embedded bun.BaseModel",
+	"ToModel":   "the request's ToModel method",
+	"ApplyTo":   "the request's ApplyTo method",
 }
 
 // ParseField parses one name:type[:arg][:optional] spec.
@@ -220,15 +250,58 @@ func NewResource(name string, specs []string, parent, plural string, movable boo
 			return nil, fmt.Errorf("field %q is declared twice", f.Column())
 		}
 		columns[f.Column()] = true
+		if by, taken := takenGoNames[f.GoName()]; taken {
+			return nil, fmt.Errorf("field %q: its Go name %s is taken by %s; rename the field", spec, f.GoName(), by)
+		}
 		if err := claim(f.GoName()); err != nil {
 			return nil, err
 		}
 		if f.Type == Ref {
-			if err := claim(naming.GoField(f.Name)); err != nil { // the belongs-to relation
+			relation := naming.GoField(f.Name)
+			if relation == "BaseModel" {
+				return nil, fmt.Errorf("field %q: its Go name %s is taken by %s; rename the field", spec, relation, takenGoNames[relation])
+			}
+			if err := claim(relation); err != nil { // the belongs-to relation
 				return nil, err
 			}
 		}
 		r.Fields = append(r.Fields, f)
 	}
+	declaredBy := map[string]string{}
+	for _, d := range r.modelDecls() {
+		if by, twice := declaredBy[d.name]; twice {
+			return nil, fmt.Errorf("models.%s would be declared twice: by %s and by %s; rename the field or choose another name or --plural", d.name, by, d.by)
+		}
+		declaredBy[d.name] = d.by
+	}
 	return r, nil
+}
+
+// enumType is the Go type of an enum field: the model's name and the field's (UnitType).
+func enumType(model string, f Field) string { return model + f.GoName() }
+
+type declaration struct{ name, by string }
+
+// modelDecls lists the package-level names the model file declares, with what declares each.
+func (r *Resource) modelDecls() []declaration {
+	n := r.Name
+	out := []declaration{
+		{n, "the model"}, {r.Plural, "the plural alias"}, {n + "Request", "the request type"},
+		{n + "Schema", "the schema"}, {n + "UpdatableColumns", "the update allowlist"},
+		{n + "Response", "the response type"}, {n + "Responses", "the responses alias"},
+		{"New" + n + "Response", "the response constructor"}, {"New" + n + "Responses", "the responses constructor"},
+	}
+	for _, f := range r.Fields {
+		if f.Type != Enum {
+			continue
+		}
+		typ := enumType(r.Name, f)
+		out = append(out,
+			declaration{typ, fmt.Sprintf("field %s's enum type", f.Name)},
+			declaration{typ + "Values", fmt.Sprintf("field %s's allow-list", f.Name)})
+		for _, value := range f.EnumValues {
+			out = append(out, declaration{typ + naming.GoField(value), fmt.Sprintf("field %s's constant for %q", f.Name, value)})
+		}
+	}
+	return out
 }

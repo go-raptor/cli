@@ -29,20 +29,20 @@ func (c *{{.Plural}}Controller) Index(ctx *raptor.Context) error {
 		return err
 	}
 
-	var {{.PluralVar}} models.{{.Plural}}
+	var {{.PluralLocal}} models.{{.Plural}}
 	if raw := ctx.QueryParam("{{.Parent.JSON}}"); raw == "" {
-		{{.PluralVar}}, err = c.{{.Plural}}.List(user.ID)
+		{{.PluralLocal}}, err = c.{{.Plural}}.List(user.ID)
 	} else {
 		{{.Parent.Var}}ID, parseErr := strconv.ParseInt(raw, 10, 64)
 		if parseErr != nil {
 			return errs.NewErrorBadRequest("Invalid {{.Parent.JSON}}")
 		}
-		{{.PluralVar}}, err = c.{{.Plural}}.ListBy{{.Parent.Name}}({{.Parent.Var}}ID, user.ID) // 404 if the {{.Parent.LabelLower}} isn't theirs
+		{{.PluralLocal}}, err = c.{{.Plural}}.ListBy{{.Parent.Name}}({{.Parent.Var}}ID, user.ID) // 404 if the {{.Parent.LabelLower}} isn't theirs
 	}
 	if err != nil {
 		return err
 	}
-	return ctx.Data(models.New{{.Name}}Responses({{.PluralVar}}))
+	return ctx.Data(models.New{{.Name}}Responses({{.PluralLocal}}))
 }
 {{- else}}
 func (c *{{.Plural}}Controller) Index(ctx *raptor.Context) error {
@@ -50,11 +50,11 @@ func (c *{{.Plural}}Controller) Index(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	{{.PluralVar}}, err := c.{{.Plural}}.List(user.ID)
+	{{.PluralLocal}}, err := c.{{.Plural}}.List(user.ID)
 	if err != nil {
 		return err
 	}
-	return ctx.Data(models.New{{.Name}}Responses({{.PluralVar}}))
+	return ctx.Data(models.New{{.Name}}Responses({{.PluralLocal}}))
 }
 {{- end}}
 
@@ -67,11 +67,11 @@ func (c *{{.Plural}}Controller) Show(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	{{.Var}}, err := c.{{.Plural}}.Get(id, user.ID)
+	{{.Local}}, err := c.{{.Plural}}.Get(id, user.ID)
 	if err != nil {
 		return err
 	}
-	return ctx.Data(models.New{{.Name}}Response({{.Var}}))
+	return ctx.Data(models.New{{.Name}}Response({{.Local}}))
 }
 
 func (c *{{.Plural}}Controller) Create(ctx *raptor.Context) error {
@@ -87,17 +87,17 @@ func (c *{{.Plural}}Controller) Create(ctx *raptor.Context) error {
 		return validationFailed(issues)
 	}
 {{- if .Parent}}
-	{{.Var}} := req.ToModel()
-	if err := c.{{.Plural}}.Create({{.Var}}, user.ID); err != nil { // verifies the {{.Parent.LabelLower}}
+	{{.Local}} := req.ToModel()
+	if err := c.{{.Plural}}.Create({{.Local}}, user.ID); err != nil { // verifies the {{.Parent.LabelLower}}
 		return err
 	}
 {{- else}}
-	{{.Var}} := req.ToModel(user.ID)
-	if err := c.{{.Plural}}.Create({{.Var}}); err != nil {
+	{{.Local}} := req.ToModel(user.ID)
+	if err := c.{{.Plural}}.Create({{.Local}}); err != nil {
 		return err
 	}
 {{- end}}
-	return ctx.Data(models.New{{.Name}}Response({{.Var}}), http.StatusCreated)
+	return ctx.Data(models.New{{.Name}}Response({{.Local}}), http.StatusCreated)
 }
 
 func (c *{{.Plural}}Controller) Update(ctx *raptor.Context) error {
@@ -116,12 +116,12 @@ func (c *{{.Plural}}Controller) Update(ctx *raptor.Context) error {
 	if issues := c.Validation.{{.Name}}Schema.Validate(&req); len(issues) > 0 {
 		return validationFailed(issues)
 	}
-	{{.Var}} := &models.{{.Name}}{ID: id} // identity from the path, state from the body
-	req.ApplyTo({{.Var}})
-	if err := c.{{.Plural}}.Update({{.Var}}, user.ID); err != nil {
+	{{.Local}} := &models.{{.Name}}{ID: id} // identity from the path, state from the body
+	req.ApplyTo({{.Local}})
+	if err := c.{{.Plural}}.Update({{.Local}}, user.ID); err != nil {
 		return err
 	}
-	return ctx.Data(models.New{{.Name}}Response({{.Var}}))
+	return ctx.Data(models.New{{.Name}}Response({{.Local}}))
 }
 
 func (c *{{.Plural}}Controller) Destroy(ctx *raptor.Context) error {

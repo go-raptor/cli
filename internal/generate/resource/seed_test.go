@@ -49,3 +49,18 @@ func TestBuildSeedModelPromotedFields(t *testing.T) {
 		t.Errorf("a field promoted through a pointer must be reported: %v", err)
 	}
 }
+
+// Finding I-3: a seed's local must not shadow a package, a helper or the seed's own locals.
+func TestBuildSeedModelRenamesCollidingLocals(t *testing.T) {
+	for name, want := range map[string]string{"Division": "division", "Context": "contextItem", "Db": "dbItem", "Suffix": "suffixItem", "Type": "typeItem"} {
+		m := &Model{Name: name, Table: "things", Fields: []ModelField{{GoName: "Name", GoType: "string", Column: "name"}}}
+		s, err := buildSeedModel(ModelIndex{name: m}, m, "example.com/shop")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Var != want {
+			t.Errorf("%s: Var = %q, want %q", name, s.Var, want)
+		}
+		mustRender(t, "seed_model.go.tmpl", s)
+	}
+}

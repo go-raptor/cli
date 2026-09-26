@@ -33,7 +33,8 @@ var numericTypes = map[string]bool{
 // it has no sample for, or a field behind an embedded pointer, is an error, which skips the
 // integration tests rather than guessing.
 func buildSeedModel(idx ModelIndex, m *Model, module string) (*seedModelView, error) {
-	s := &seedModelView{Module: module, Name: m.Name, Var: naming.Var(m.Name), Owned: idx.IsOwned(m.Name)}
+	v := naming.Var(m.Name)
+	s := &seedModelView{Module: module, Name: m.Name, Var: localName(v, v+"Item", "userID"), Owned: idx.IsOwned(m.Name)}
 	for _, f := range m.Fields {
 		expr, err := seedExpr(idx, m, f, s)
 		if err != nil {

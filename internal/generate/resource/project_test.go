@@ -234,3 +234,42 @@ type User struct {
 	Credentials
 }
 `
+
+// Finding I-3: a generated package-level name must not clash with anything the package already
+// declares, Bun model or not.
+func TestDecideRefusesNameClashes(t *testing.T) {
+	tests := []struct {
+		name, resource, parent, want string
+		setup                        func(t *testing.T)
+	}{
+		{"non-Bun type", "Report", "", "app/models already declares Report", func(t *testing.T) {
+			writeFile(t, "app/models/report.go", "package models\n\ntype Report struct{ Title string }\n")
+		}},
+		{"response constructor", "Report", "", "app/models already declares NewReportResponse", func(t *testing.T) {
+			writeFile(t, "app/models/report.go", "package models\n\nfunc NewReportResponse() {}\n")
+		}},
+		{"hand-written service", "Report", "", "app/services already declares ReportsService", func(t *testing.T) {
+			writeFile(t, "app/services/reports_service.go", "package services\n\ntype ReportsService struct{}\n")
+		}},
+		{"hand-written controller", "Report", "", "app/controllers already declares ReportsController", func(t *testing.T) {
+			writeFile(t, "app/controllers/reports_controller.go", "package controllers\n\ntype ReportsController struct{}\n")
+		}},
+		{"test function", "Report", "", "the controllers tests already declare TestReportsRequireAuth", func(t *testing.T) {
+			writeFile(t, "app/controllers/reports_test.go", "package controllers_test\n\nfunc TestReportsRequireAuth() {}\n")
+		}},
+		{"predicate constant", "Outcome", "Course", "app/services already declares outcomesOwnedByUser", func(t *testing.T) {
+			writeFile(t, "app/models/course.go", "package models\n\nimport \"github.com/uptrace/bun\"\n\ntype Course struct {\n\tbun.BaseModel `bun:\"table:courses,alias:courses\"`\n\n\tID     int64 `bun:\"id,pk,autoincrement\"`\n\tUserID int64 `bun:\"user_id,notnull\"`\n}\n")
+			writeFile(t, "app/services/courses_service.go", "package services\n\ntype CoursesService struct{}\n\nfunc (s *CoursesService) VerifyOwnership(id, userID int64) error { return nil }\n\nconst outcomesOwnedByUser = \"\"\n")
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			copyFixture(t)
+			tt.setup(t)
+			_, err := decideFor(t, tt.resource, nil, tt.parent)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want it to mention %q", err, tt.want)
+			}
+		})
+	}
+}

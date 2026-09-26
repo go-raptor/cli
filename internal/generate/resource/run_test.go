@@ -150,3 +150,37 @@ func TestRunRegistersInAOneLineLiteral(t *testing.T) {
 		t.Errorf("the edit should have been made:\n%s", out.String())
 	}
 }
+
+// Finding I-3: two outputs on one path is a clear error, and nothing is written.
+func TestRunRefusesCollidingPaths(t *testing.T) {
+	copyFixture(t)
+	before := snapshot(t, ".")
+	err := run(t, Options{Name: "Validation"})
+	if err == nil || !strings.Contains(err.Error(), "app/models/validation.go would be written twice") {
+		t.Fatalf("error = %v", err)
+	}
+	if !reflect.DeepEqual(before, snapshot(t, ".")) {
+		t.Error("a refused run must not change any file")
+	}
+}
+
+// A model file Go would skip (lab_test.go is a test file, x_linux.go is built only on Linux)
+// gets a name it compiles under.
+func TestRunNamesTheModelFileSoItCompiles(t *testing.T) {
+	copyFixture(t)
+	for _, name := range []string{"LabTest", "StoreWindows"} {
+		if err := run(t, Options{Name: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{"app/models/lab_test_model.go", "app/models/store_windows_model.go"} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("missing %s", path)
+		}
+	}
+	for _, path := range []string{"app/models/lab_test.go", "app/models/store_windows.go"} {
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("%s would not compile into the package", path)
+		}
+	}
+}

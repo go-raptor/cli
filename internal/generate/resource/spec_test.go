@@ -105,6 +105,16 @@ func TestNewResourceErrors(t *testing.T) {
 		{"Course", []string{"name:string", "name:text"}, "", "", false, "declared twice"},
 		{"Course", []string{"division:ref", "division:string"}, "", "", false, "Division is used twice"},
 		{"Course", nil, "", "courses", false, "--plural"},
+		// Finding I-3: field names the generated structs already use.
+		{"Course", []string{"to_model:string"}, "", "", false, "field \"to_model:string\": its Go name ToModel is taken by the request's ToModel method"},
+		{"Course", []string{"apply_to:string"}, "", "", false, "its Go name ApplyTo is taken by the request's ApplyTo method"},
+		{"Course", []string{"base_model:string"}, "", "", false, "its Go name BaseModel is taken by the embedded bun.BaseModel"},
+		{"Course", []string{"base_model:ref"}, "", "", false, "its Go name BaseModel is taken by the embedded bun.BaseModel"},
+		// Finding I-3: package-level names the model file would declare twice.
+		{"Course", []string{"request:enum:a,b"}, "", "", false, "models.CourseRequest would be declared twice: by the request type and by field request's enum type"},
+		{"Course", []string{"kind:enum:values"}, "", "", false, "models.CourseKindValues would be declared twice"},
+		{"Course", []string{"kinds:enum:a"}, "", "CourseKinds", false, "models.CourseKinds would be declared twice"},
+		{"Sheep", nil, "", "Sheep", false, "models.Sheep would be declared twice: by the model and by the plural alias"},
 	}
 	for _, tt := range tests {
 		_, err := NewResource(tt.name, tt.specs, tt.parent, tt.plural, tt.movable)

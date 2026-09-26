@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"go/build"
 	"io"
 	"os"
 	"path/filepath"
@@ -45,11 +46,15 @@ func Plan(res *Resource, p *Project, now time.Time) (*Generation, error) {
 	}
 	g := &Generation{}
 	snake := naming.Snake(res.Name)
+	modelFile := snake + ".go"
+	if goSkips(modelFile) {
+		modelFile = snake + "_model.go"
+	}
 	for _, s := range []struct {
 		ok         bool
 		path, tmpl string
 	}{
-		{true, filepath.Join("app", "models", snake+".go"), "model.go.tmpl"},
+		{true, filepath.Join("app", "models", modelFile), "model.go.tmpl"},
 		{true, filepath.Join("app", "services", v.Table+"_service.go"), "service.go.tmpl"},
 		{true, filepath.Join("app", "controllers", v.Table+"_controller.go"), "controller.go.tmpl"},
 		{d.DatabaseService, filepath.Join("app", "services", "database_service.go"), "database_service.go.tmpl"},
@@ -91,6 +96,13 @@ func Plan(res *Resource, p *Project, now time.Time) (*Generation, error) {
 		g.Files = append(g.Files, File{filepath.Join("db", "migrations", stamp.Add(-time.Second).Format(migrationStamp)+"_setup.sql"), setupMigration})
 	}
 	g.Files = append(g.Files, File{filepath.Join("db", "migrations", stamp.Format(migrationStamp)+"_create_"+v.Table+".sql"), renderMigration(v)})
+	written := map[string]bool{}
+	for _, f := range g.Files {
+		if written[f.Path] {
+			return nil, fmt.Errorf("%s would be written twice (two generated files share the name); choose another name", f.Path)
+		}
+		written[f.Path] = true
+	}
 
 	if d.DatabaseService {
 		g.Edits = append(g.Edits, registerEdit(p.Module, "service", "DatabaseService"))
@@ -121,6 +133,25 @@ func Plan(res *Resource, p *Project, now time.Time) (*Generation, error) {
 		Manual: "under /api/v1: add\n" + strings.Join(routesBlock(2, 2, v.Route, v.Plural), "\n"),
 	})
 	return g, nil
+}
+
+// goSkips reports whether the go command leaves a file of this name out of the package: a
+// _test.go file, or one whose name limits it to an OS or architecture (x_windows.go).
+func goSkips(name string) bool {
+	if strings.HasSuffix(name, "_test.go") {
+		return true
+	}
+	for _, target := range [][2]string{{"linux", "amd64"}, {"windows", "arm64"}} {
+		ctxt := build.Default
+		ctxt.GOOS, ctxt.GOARCH = target[0], target[1]
+		ctxt.OpenFile = func(string) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("package models\n")), nil
+		}
+		if ok, err := ctxt.MatchFile(".", name); err != nil || !ok {
+			return true
+		}
+	}
+	return false
 }
 
 func registerEdit(module, kind, structName string) Edit {

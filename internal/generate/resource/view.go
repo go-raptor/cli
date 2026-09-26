@@ -14,6 +14,8 @@ type view struct {
 	Plural           string // Courses
 	Var              string // course
 	PluralVar        string // courses
+	Local            string // the variable for one row: Var, or Var+"Item" where Var would shadow
+	PluralLocal      string // the variable for a list: PluralVar, or Var+"Items"
 	Recv             string // mapper receiver: the name's first letter, or m where that is r
 	Table            string // courses
 	Route            string // courses; kebab-case for multiword names
@@ -82,6 +84,12 @@ func buildView(res *Resource, module string, idx ModelIndex) (*view, error) {
 		Recv:             strings.ToLower(res.Name[:1]),
 	}
 	v.Route = naming.Kebab(v.Table)
+	testLocals := []string{"current"} // a test local next to the resource's own
+	if res.Parent != "" {
+		testLocals = append(testLocals, "other"+res.Parent, "strangers"+res.Parent)
+	}
+	v.Local = localName(v.Var, v.Var+"Item", testLocals...)
+	v.PluralLocal = localName(v.PluralVar, v.Var+"Items", testLocals...)
 	if v.Recv == "r" {
 		v.Recv = "m" // r is the request receiver
 	}
@@ -138,6 +146,26 @@ func buildView(res *Resource, module string, idx ModelIndex) (*view, error) {
 		v.ChildOrder = quoteJoin(append([]string{v.Table + "." + v.Parent.Column}, order...))
 	}
 	return v, nil
+}
+
+// testFuncs are the package-level functions the integration test and seed files declare.
+func (v *view) testFuncs() []string {
+	fns := []string{
+		v.PluralVar + "Request", "valid" + v.Name + "Request", "seed" + v.Name,
+		"Test" + v.Plural + "RequireAuth", "Test" + v.Plural + "OwnerLifecycle", "Test" + v.Plural + "StrangerGets404",
+	}
+	if v.HasRequired {
+		fns = append(fns, "Test"+v.Plural+"CreateValidation")
+	}
+	if v.Parent != nil {
+		fns = append(fns, "Test"+v.Plural+"UnderStrangers"+v.Parent.Name)
+		if v.Movable {
+			fns = append(fns, "Test"+v.Plural+"CannotMoveToStrangers"+v.Parent.Name)
+		} else {
+			fns = append(fns, "Test"+v.Plural+"ParentIsImmutable")
+		}
+	}
+	return fns
 }
 
 func (v *view) field(f Field, idx ModelIndex) (fieldView, error) {
@@ -198,7 +226,7 @@ func (v *view) field(f Field, idx ModelIndex) (fieldView, error) {
 		}
 		fv.ReqType = fv.GoType
 	case Enum:
-		e := enumView{Type: v.Name + f.GoName(), SQLType: naming.Snake(v.Name) + "_" + col}
+		e := enumView{Type: enumType(v.Name, f), SQLType: naming.Snake(v.Name) + "_" + col}
 		for _, value := range f.EnumValues {
 			e.Consts = append(e.Consts, enumConst{Name: e.Type + naming.GoField(value), Value: value})
 		}

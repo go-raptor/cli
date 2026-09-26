@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/go-raptor/cli/internal/naming"
 )
 
 func mustView(t *testing.T, name string, specs []string, parent string, movable bool) *view {
@@ -17,6 +19,29 @@ func mustView(t *testing.T, name string, specs []string, parent string, movable 
 		t.Fatal(err)
 	}
 	return v
+}
+
+// Finding I-3: a local that would shadow a package, a harness helper or another test local is
+// renamed; everything derived from the name (IDs, helpers, the predicate) keeps it.
+func TestBuildViewRenamesCollidingLocals(t *testing.T) {
+	for _, tt := range []struct{ name, parent, local, pluralLocal string }{
+		{"Seminar", "", "seminar", "seminars"},
+		{"Model", "", "model", "modelItems"},
+		{"Context", "", "contextItem", "contexts"},
+		{"Login", "", "loginItem", "logins"},
+		{"Db", "", "dbItem", "dbs"},
+		{"Current", "Course", "currentItem", "currents"},
+		{"OtherCourse", "Course", "otherCourseItem", "otherCourses"},
+		{"StrangersCourse", "Course", "strangersCourseItem", "strangersCourses"},
+	} {
+		v := mustView(t, tt.name, nil, tt.parent, false)
+		if v.Local != tt.local || v.PluralLocal != tt.pluralLocal {
+			t.Errorf("%s: locals %q, %q; want %q, %q", tt.name, v.Local, v.PluralLocal, tt.local, tt.pluralLocal)
+		}
+		if v.Var != naming.Var(tt.name) {
+			t.Errorf("%s: Var = %q; the derived names keep the natural one", tt.name, v.Var)
+		}
+	}
 }
 
 func TestBuildViewFlat(t *testing.T) {

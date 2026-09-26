@@ -139,10 +139,10 @@ func New{{.Name}}Response({{.Recv}} *{{.Name}}) {{.Name}}Response {
 	}
 }
 
-func New{{.Name}}Responses({{.PluralVar}} {{.Plural}}) {{.Name}}Responses {
-	res := make({{.Name}}Responses, len({{.PluralVar}}))
-	for i := range {{.PluralVar}} {
-		res[i] = New{{.Name}}Response(&{{.PluralVar}}[i])
+func New{{.Name}}Responses({{.PluralLocal}} {{.Plural}}) {{.Name}}Responses {
+	res := make({{.Name}}Responses, len({{.PluralLocal}}))
+	for i := range {{.PluralLocal}} {
+		res[i] = New{{.Name}}Response(&{{.PluralLocal}}[i])
 	}
 	return res
 }

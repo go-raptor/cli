@@ -25,6 +25,9 @@ type decls struct {
 
 func (d decls) has(recv, method string) bool { return d.Methods[recv][method] }
 
+// declares reports whether the package declares name at the top level.
+func (d decls) declares(name string) bool { return d.Funcs[name] || d.Vars[name] || d.Types[name] }
+
 // loadDecls reads dir's non-test files, or with tests its _test.go files in an external
 // (_test) package.
 func loadDecls(dir string, tests bool) (decls, error) {
@@ -214,11 +217,7 @@ func (p *Project) decide(res *Resource, v *view) (*decisions, error) {
 	if v.Parent != nil && !p.Services.has(v.Parent.Plural+"Service", "VerifyOwnership") {
 		problems = append(problems, fmt.Sprintf("%sService has no VerifyOwnership(id, userID int64) error method, which a child's service calls", v.Parent.Plural))
 	}
-	for _, fn := range []string{"seed" + res.Name, "valid" + res.Name + "Request", v.PluralVar + "Request"} {
-		if p.ControllerTests.Funcs[fn] {
-			problems = append(problems, fmt.Sprintf("the controllers tests already define %s", fn))
-		}
-	}
+	problems = append(problems, p.nameClashes(res, v)...)
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("cannot generate %s:\n  - %s", res.Name, strings.Join(problems, "\n  - "))
 	}
@@ -229,6 +228,29 @@ func (p *Project) decide(res *Resource, v *view) (*decisions, error) {
 		d.Tests = true
 	}
 	return d, nil
+}
+
+// nameClashes lists the package-level names the new files would declare that their package
+// already declares, Bun model or not.
+func (p *Project) nameClashes(res *Resource, v *view) []string {
+	var out []string
+	clash := func(d decls, where, name string) {
+		if d.declares(name) {
+			out = append(out, where+" "+name)
+		}
+	}
+	for _, d := range res.modelDecls() {
+		clash(p.ModelsPkg, "app/models already declares", d.name)
+	}
+	clash(p.Services, "app/services already declares", v.Plural+"Service")
+	if v.PredicateConst != "" {
+		clash(p.Services, "app/services already declares", v.PredicateConst)
+	}
+	clash(p.Controllers, "app/controllers already declares", v.Plural+"Controller")
+	for _, fn := range v.testFuncs() {
+		clash(p.ControllerTests, "the controllers tests already declare", fn)
+	}
+	return out
 }
 
 // decideTests returns why integration tests can't be generated, or "" after recording the test

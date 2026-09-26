@@ -21,13 +21,13 @@ const {{.PredicateConst}} = `{{.Predicate}}`
 
 // List is every {{.LabelLower}} the user owns: the unfiltered index.
 func (s *{{.Plural}}Service) List(userID int64) (models.{{.Plural}}, error) {
-	var {{.PluralVar}} models.{{.Plural}}
+	var {{.PluralLocal}} models.{{.Plural}}
 	err := s.DB.Conn().NewSelect().
-		Model(&{{.PluralVar}}).
+		Model(&{{.PluralLocal}}).
 		Where({{.PredicateConst}}, userID).
 		Order({{.ChildOrder}}).
 		Scan(s.DB.Ctx)
-	return {{.PluralVar}}, s.DB.HandleError(err)
+	return {{.PluralLocal}}, s.DB.HandleError(err)
 }
 
 // ListBy{{.Parent.Name}} verifies the parent first: filtering alone could not tell "not your
@@ -36,48 +36,48 @@ func (s *{{.Plural}}Service) ListBy{{.Parent.Name}}({{.Parent.Var}}ID, userID in
 	if err := s.{{.Parent.Plural}}.VerifyOwnership({{.Parent.Var}}ID, userID); err != nil {
 		return nil, err
 	}
-	var {{.PluralVar}} models.{{.Plural}}
+	var {{.PluralLocal}} models.{{.Plural}}
 	err := s.DB.Conn().NewSelect().
-		Model(&{{.PluralVar}}).
+		Model(&{{.PluralLocal}}).
 		Where("{{.Table}}.{{.Parent.Column}} = ?", {{.Parent.Var}}ID).
 		Order({{.OrderBy}}).
 		Scan(s.DB.Ctx)
-	return {{.PluralVar}}, s.DB.HandleError(err)
+	return {{.PluralLocal}}, s.DB.HandleError(err)
 }
 
 func (s *{{.Plural}}Service) Get(id, userID int64) (*models.{{.Name}}, error) {
-	{{.Var}} := new(models.{{.Name}})
+	{{.Local}} := new(models.{{.Name}})
 	err := s.DB.Conn().NewSelect().
-		Model({{.Var}}).
+		Model({{.Local}}).
 		Where("{{.Table}}.id = ?", id).
 		Where({{.PredicateConst}}, userID).
 		Scan(s.DB.Ctx)
-	return {{.Var}}, s.DB.HandleErrorNotFound(err, "{{.Label}} not found")
+	return {{.Local}}, s.DB.HandleErrorNotFound(err, "{{.Label}} not found")
 }
 
-func (s *{{.Plural}}Service) Create({{.Var}} *models.{{.Name}}, userID int64) error {
-	if err := s.{{.Parent.Plural}}.VerifyOwnership({{.Var}}.{{.Parent.Field}}, userID); err != nil {
+func (s *{{.Plural}}Service) Create({{.Local}} *models.{{.Name}}, userID int64) error {
+	if err := s.{{.Parent.Plural}}.VerifyOwnership({{.Local}}.{{.Parent.Field}}, userID); err != nil {
 		return err
 	}
 	_, err := s.DB.Conn().NewInsert().
-		Model({{.Var}}).
+		Model({{.Local}}).
 		Returning("*").
 		Exec(s.DB.Ctx)
 	return s.DB.HandleError(err)
 }
 
-func (s *{{.Plural}}Service) Update({{.Var}} *models.{{.Name}}, userID int64) error {
+func (s *{{.Plural}}Service) Update({{.Local}} *models.{{.Name}}, userID int64) error {
 {{- if .Movable}}
 	// The WHERE below sees pre-update values, so it only proves the *current* {{.Parent.LabelLower}}
 	// is the user's. The destination needs its own check.
-	if err := s.{{.Parent.Plural}}.VerifyOwnership({{.Var}}.{{.Parent.Field}}, userID); err != nil {
+	if err := s.{{.Parent.Plural}}.VerifyOwnership({{.Local}}.{{.Parent.Field}}, userID); err != nil {
 		return err
 	}
 {{- end}}
 	res, err := s.DB.Conn().NewUpdate().
-		Model({{.Var}}).
+		Model({{.Local}}).
 		Column(models.{{.Name}}UpdatableColumns...).
-		Where("{{.Table}}.id = ?", {{.Var}}.ID).
+		Where("{{.Table}}.id = ?", {{.Local}}.ID).
 		Where({{.PredicateConst}}, userID).
 		Returning("*").
 		Exec(s.DB.Ctx)
@@ -111,27 +111,27 @@ func (s *{{.Plural}}Service) VerifyOwnership({{.Var}}ID, userID int64) error {
 }
 {{- else}}
 func (s *{{.Plural}}Service) List(userID int64) (models.{{.Plural}}, error) {
-	var {{.PluralVar}} models.{{.Plural}}
+	var {{.PluralLocal}} models.{{.Plural}}
 	err := s.DB.Conn().NewSelect().
-		Model(&{{.PluralVar}}).
+		Model(&{{.PluralLocal}}).
 		Where("{{.Table}}.user_id = ?", userID).
 		Order({{.OrderBy}}).
 		Scan(s.DB.Ctx)
-	return {{.PluralVar}}, s.DB.HandleError(err)
+	return {{.PluralLocal}}, s.DB.HandleError(err)
 }
 
 func (s *{{.Plural}}Service) Get(id, userID int64) (*models.{{.Name}}, error) {
-	{{.Var}} := new(models.{{.Name}})
+	{{.Local}} := new(models.{{.Name}})
 	err := s.DB.Conn().NewSelect().
-		Model({{.Var}}).
+		Model({{.Local}}).
 		Where("{{.Table}}.id = ? AND {{.Table}}.user_id = ?", id, userID).
 		Scan(s.DB.Ctx)
-	return {{.Var}}, s.DB.HandleErrorNotFound(err, "{{.Label}} not found")
+	return {{.Local}}, s.DB.HandleErrorNotFound(err, "{{.Label}} not found")
 }
 
-func (s *{{.Plural}}Service) Create({{.Var}} *models.{{.Name}}) error {
+func (s *{{.Plural}}Service) Create({{.Local}} *models.{{.Name}}) error {
 	_, err := s.DB.Conn().NewInsert().
-		Model({{.Var}}).
+		Model({{.Local}}).
 		Returning("*").
 		Exec(s.DB.Ctx)
 	return s.DB.HandleError(err)
@@ -139,11 +139,11 @@ func (s *{{.Plural}}Service) Create({{.Var}} *models.{{.Name}}) error {
 
 // Update writes only the allowlisted columns; the WHERE scopes the write to the owner, and
 // Returning("*") brings back the trigger-set updated_at.
-func (s *{{.Plural}}Service) Update({{.Var}} *models.{{.Name}}, userID int64) error {
+func (s *{{.Plural}}Service) Update({{.Local}} *models.{{.Name}}, userID int64) error {
 	res, err := s.DB.Conn().NewUpdate().
-		Model({{.Var}}).
+		Model({{.Local}}).
 		Column(models.{{.Name}}UpdatableColumns...).
-		Where("id = ? AND user_id = ?", {{.Var}}.ID, userID).
+		Where("id = ? AND user_id = ?", {{.Local}}.ID, userID).
 		Returning("*").
 		Exec(s.DB.Ctx)
 	return s.DB.HandleAffected(res, err, "{{.Label}} not found")

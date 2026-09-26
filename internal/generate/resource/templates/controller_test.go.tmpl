@@ -116,8 +116,8 @@ func Test{{.Plural}}StrangerGets404(t *testing.T) {
 	owner := newUser(t, fmt.Sprintf("owner-%d", suffix))
 	stranger := newUser(t, fmt.Sprintf("stranger-%d", suffix))
 	strangerSession := login(t, stranger.Username)
-	{{.Var}} := seed{{.Name}}(t, owner.ID)
-	path := fmt.Sprintf("/api/v1/{{.Route}}/%d", {{.Var}}.ID)
+	{{.Local}} := seed{{.Name}}(t, owner.ID)
+	path := fmt.Sprintf("/api/v1/{{.Route}}/%d", {{.Local}}.ID)
 
 	if rec := {{.PluralVar}}Request(t, http.MethodGet, path, strangerSession, nil); rec.Code != http.StatusNotFound {
 		t.Errorf("stranger show: %d, want 404", rec.Code)
@@ -168,12 +168,12 @@ func Test{{.Plural}}CannotMoveToStrangers{{.Parent.Name}}(t *testing.T) {
 	owner := newUser(t, fmt.Sprintf("owner-%d", suffix))
 	stranger := newUser(t, fmt.Sprintf("stranger-%d", suffix))
 	session := login(t, owner.Username)
-	{{.Var}} := seed{{.Name}}(t, owner.ID)
+	{{.Local}} := seed{{.Name}}(t, owner.ID)
 	strangers{{.Parent.Name}} := seed{{.Parent.Name}}(t, stranger.ID)
 
 	req := valid{{.Name}}Request(t, owner.ID)
 	req.{{.Parent.Field}} = strangers{{.Parent.Name}}.ID
-	path := fmt.Sprintf("/api/v1/{{.Route}}/%d", {{.Var}}.ID)
+	path := fmt.Sprintf("/api/v1/{{.Route}}/%d", {{.Local}}.ID)
 	if rec := {{.PluralVar}}Request(t, http.MethodPut, path, session, req); rec.Code != http.StatusNotFound {
 		t.Errorf("move to the stranger's {{.Parent.LabelLower}}: %d, want 404", rec.Code)
 	}
@@ -186,8 +186,8 @@ func Test{{.Plural}}CannotMoveToStrangers{{.Parent.Name}}(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
 		t.Fatal(err)
 	}
-	if current.{{.Parent.Field}} != {{.Var}}.{{.Parent.Field}} {
-		t.Errorf("the {{.LabelLower}} moved: {{.Parent.Field}} = %v, want %v", current.{{.Parent.Field}}, {{.Var}}.{{.Parent.Field}})
+	if current.{{.Parent.Field}} != {{.Local}}.{{.Parent.Field}} {
+		t.Errorf("the {{.LabelLower}} moved: {{.Parent.Field}} = %v, want %v", current.{{.Parent.Field}}, {{.Local}}.{{.Parent.Field}})
 	}
 }
 {{- else}}
@@ -195,12 +195,12 @@ func Test{{.Plural}}CannotMoveToStrangers{{.Parent.Name}}(t *testing.T) {
 func Test{{.Plural}}ParentIsImmutable(t *testing.T) {
 	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
 	session := login(t, owner.Username)
-	{{.Var}} := seed{{.Name}}(t, owner.ID)
+	{{.Local}} := seed{{.Name}}(t, owner.ID)
 	other{{.Parent.Name}} := seed{{.Parent.Name}}(t, owner.ID)
 
 	req := valid{{.Name}}Request(t, owner.ID)
 	req.{{.Parent.Field}} = other{{.Parent.Name}}.ID
-	path := fmt.Sprintf("/api/v1/{{.Route}}/%d", {{.Var}}.ID)
+	path := fmt.Sprintf("/api/v1/{{.Route}}/%d", {{.Local}}.ID)
 	rec := {{.PluralVar}}Request(t, http.MethodPut, path, session, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update: %d %s", rec.Code, rec.Body)
@@ -209,8 +209,8 @@ func Test{{.Plural}}ParentIsImmutable(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.{{.Parent.Field}} != {{.Var}}.{{.Parent.Field}} {
-		t.Errorf("the {{.Parent.LabelLower}} must not change: {{.Parent.Field}} = %v, want %v", updated.{{.Parent.Field}}, {{.Var}}.{{.Parent.Field}})
+	if updated.{{.Parent.Field}} != {{.Local}}.{{.Parent.Field}} {
+		t.Errorf("the {{.Parent.LabelLower}} must not change: {{.Parent.Field}} = %v, want %v", updated.{{.Parent.Field}}, {{.Local}}.{{.Parent.Field}})
 	}
 
 	rec = {{.PluralVar}}Request(t, http.MethodGet, path, session, nil)
@@ -221,8 +221,8 @@ func Test{{.Plural}}ParentIsImmutable(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
 		t.Fatal(err)
 	}
-	if current.{{.Parent.Field}} != {{.Var}}.{{.Parent.Field}} {
-		t.Errorf("the {{.Parent.LabelLower}} must not change: {{.Parent.Field}} = %v, want %v", current.{{.Parent.Field}}, {{.Var}}.{{.Parent.Field}})
+	if current.{{.Parent.Field}} != {{.Local}}.{{.Parent.Field}} {
+		t.Errorf("the {{.Parent.LabelLower}} must not change: {{.Parent.Field}} = %v, want %v", current.{{.Parent.Field}}, {{.Local}}.{{.Parent.Field}})
 	}
 }
 {{- end}}

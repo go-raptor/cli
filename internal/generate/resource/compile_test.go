@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -41,22 +42,59 @@ func TestGeneratedProjectCompiles(t *testing.T) {
 	vetProject(t, env)
 }
 
-// TestEdgeCasesCompile generates, into one project, the models and names that once produced
-// output that did not compile, and vets the result.
+// TestEdgeCasesCompile generates the models and names that once produced output that did not
+// compile, one project per group, and vets each project.
 func TestEdgeCasesCompile(t *testing.T) {
-	env := compileEnv(t)
-	// Finding I-1: a parent owned through an embedded mixin, whose seed must set the promoted
-	// user_id outside the composite literal.
-	writeFile(t, "app/models/folder.go", folderModel)
-	writeFile(t, "app/services/folders_service.go", foldersService)
-	for _, o := range []Options{
-		{Name: "Page", Fields: []string{"name:string"}, Parent: "Folder"},
+	for _, project := range []struct {
+		name  string
+		files map[string]string
+		runs  []Options
+	}{
+		{"locals", map[string]string{
+			"app/models/folder.go":            folderModel,
+			"app/services/folders_service.go": foldersService,
+		}, []Options{
+			// Finding I-1: a parent owned through an embedded mixin, whose seed must set the
+			// promoted user_id outside the composite literal.
+			{Name: "Page", Fields: []string{"name:string"}, Parent: "Folder"},
+			// Finding I-3: names whose variables would shadow a package, a harness helper or a
+			// test local get renamed locals.
+			{Name: "Model", Fields: []string{"name:string"}},
+			{Name: "Context", Fields: []string{"name:string"}},
+			{Name: "Login", Fields: []string{"name:string"}},
+			{Name: "Db", Fields: []string{"name:string"}},
+			{Name: "Current", Fields: []string{"name:string"}, Parent: "Model"},
+			{Name: "OtherModel", Fields: []string{"name:string"}, Parent: "Model"},
+			{Name: "StrangersModel", Fields: []string{"name:string"}, Parent: "Model", Movable: true},
+			// Finding I-3: a model file named lab_test.go would be a test file.
+			{Name: "LabTest", Fields: []string{"name:string"}},
+		}},
+		{"seeds", map[string]string{
+			"app/models/context.go": referenceModel("Context", "contexts"),
+			"app/models/db.go":      referenceModel("Db", "dbs"),
+		}, []Options{
+			// Finding I-3: the seeds generated for existing models named Context and Db must not
+			// shadow the context package or the db helper.
+			{Name: "Shift", Fields: []string{"name:string", "context:ref", "db:ref"}},
+		}},
 	} {
-		if err := run(t, o); err != nil {
-			t.Fatalf("%s: %v", o.Name, err)
-		}
+		t.Run(project.name, func(t *testing.T) {
+			env := compileEnv(t)
+			for path, content := range project.files {
+				writeFile(t, path, content)
+			}
+			for _, o := range project.runs {
+				if err := run(t, o); err != nil {
+					t.Fatalf("%s: %v", o.Name, err)
+				}
+			}
+			vetProject(t, env)
+		})
 	}
-	vetProject(t, env)
+}
+
+func referenceModel(name, table string) string {
+	return fmt.Sprintf("package models\n\nimport \"github.com/uptrace/bun\"\n\ntype %s struct {\n\tbun.BaseModel `bun:\"table:%s,alias:%s\"`\n\n\tID    int64  `bun:\"id,pk,autoincrement\" json:\"id\"`\n\tLabel string `bun:\"label,notnull\" json:\"label\"`\n}\n", name, table, table)
 }
 
 const folderModel = `package models
