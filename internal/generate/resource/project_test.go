@@ -4,19 +4,24 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
+// packageDir is this source file's directory, resolved at compile time so it stays correct even
+// after a test has changed the process's working directory with t.Chdir.
+var packageDir = func() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Dir(file)
+}()
+
 // copyFixture copies testdata/project into a temp dir and changes into it.
 func copyFixture(t *testing.T) string {
 	t.Helper()
-	src, err := filepath.Abs(filepath.Join("testdata", "project"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	src := filepath.Join(packageDir, "testdata", "project")
 	dst := t.TempDir()
-	err = filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

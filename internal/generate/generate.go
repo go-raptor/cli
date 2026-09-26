@@ -1,12 +1,16 @@
 package generate
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-raptor/cli/internal/components"
+	"github.com/go-raptor/cli/internal/generate/resource"
 	"github.com/go-raptor/cli/internal/naming"
 	"github.com/go-raptor/cli/internal/project"
 	"github.com/spf13/cobra"
@@ -16,15 +20,33 @@ var Cmd = &cobra.Command{
 	Use:     "generate [type] [name]",
 	Aliases: []string{"g"},
 	Short:   "Generate a new component",
-	Long: `Generate a new controller, service, middleware, or model.
+	Long: `Generate a new controller, service, middleware, model, or a whole resource.
 
 Examples:
   raptor generate controller Users
   raptor g service Auth
   raptor g middleware RateLimit
-  raptor g model User`,
-	Args: cobra.ExactArgs(2),
+  raptor g model User
+  raptor g resource Course name:string lecture_hours:int division:ref
+  raptor g resource Outcome name:string position:int --parent Course
+  raptor g resource Unit title:string:80 type:enum:lecture,lab --parent Outcome --movable
+
+Resource fields are name:type[:arg][:optional], with the types string[:length],
+text, int, int64, bool, time, enum:a,b,c and ref[:Model].`,
+	Args: cobra.MinimumNArgs(2),
 	Run:  generate,
+}
+
+var (
+	resourceParent  string
+	resourceMovable bool
+	resourcePlural  string
+)
+
+func init() {
+	Cmd.Flags().StringVar(&resourceParent, "parent", "", "resource: the model this resource belongs to")
+	Cmd.Flags().BoolVar(&resourceMovable, "movable", false, "resource: let an update move it to another parent")
+	Cmd.Flags().StringVar(&resourcePlural, "plural", "", "resource: the plural of an irregular name")
 }
 
 var typeSuffixes = map[string]string{
@@ -33,15 +55,41 @@ var typeSuffixes = map[string]string{
 	"middleware": "Middleware",
 }
 
+// checkArgs enforces the argument count per type: a resource takes field specs after its name,
+// every other type exactly a name.
+func checkArgs(componentType string, args []string) error {
+	if componentType == "resource" {
+		if len(args) < 2 {
+			return errors.New("usage: raptor g resource <Name> [field:type ...] [--parent Model] [--movable] [--plural Name]")
+		}
+		return nil
+	}
+	if len(args) != 2 {
+		return fmt.Errorf("usage: raptor g %s <Name>", componentType)
+	}
+	return nil
+}
+
+func goModTidy() error {
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	return cmd.Run()
+}
+
 func generate(cmd *cobra.Command, args []string) {
 	componentType := strings.ToLower(args[0])
 	name := args[1]
 
 	switch componentType {
-	case "controller", "service", "middleware", "model":
+	case "controller", "service", "middleware", "model", "resource":
 	default:
 		fmt.Printf("Unknown component type: %s\n", componentType)
-		fmt.Println("Available types: controller, service, middleware, model")
+		fmt.Println("Available types: controller, service, middleware, model, resource")
+		os.Exit(1)
+	}
+
+	if err := checkArgs(componentType, args); err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 
@@ -54,6 +102,18 @@ func generate(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Printf("Error reading go.mod: %v\n", err)
 		os.Exit(1)
+	}
+
+	if componentType == "resource" {
+		err := resource.Run(resource.Options{
+			Name: args[1], Fields: args[2:], Parent: resourceParent, Plural: resourcePlural,
+			Movable: resourceMovable, Module: moduleName, Now: time.Now(), Tidy: goModTidy, Out: os.Stdout,
+		})
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	// Normalize the name: strip type suffix if present, convert to snake_case, then PascalCase
