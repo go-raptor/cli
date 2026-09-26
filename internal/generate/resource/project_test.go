@@ -338,3 +338,29 @@ func TestDecideRefusesNameClashes(t *testing.T) {
 		})
 	}
 }
+
+// Finding I-10: the users migration may use any common spelling of its CREATE TABLE.
+func TestDecideFindsTheUsersMigration(t *testing.T) {
+	for statement, found := range map[string]bool{
+		"CREATE TABLE users (":                  true,
+		"CREATE TABLE IF NOT EXISTS users (":    true,
+		"create table if not exists \"users\"(": true,
+		"CREATE TABLE \"users\" (":              true,
+		"CREATE TABLE public.users (":           true,
+		"CREATE TABLE \"public\".\"users\"\n(":  true,
+		"CREATE TABLE users_archive (":          false,
+		"CREATE TABLE \"users_archive\" (":      false,
+		"CREATE TABLE users.accounts (":         false,
+		"CREATE VIEW users AS":                  false,
+	} {
+		copyFixture(t)
+		replaceInFile(t, "db/migrations/20260101000000_create_users.sql", "CREATE TABLE users (", statement)
+		_, err := decideFor(t, "Course", nil, "")
+		if found && err != nil {
+			t.Errorf("%q: %v", statement, err)
+		}
+		if !found && (err == nil || !strings.Contains(err.Error(), "auth stack")) {
+			t.Errorf("%q: error = %v, want the auth stack refusal", statement, err)
+		}
+	}
+}

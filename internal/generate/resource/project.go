@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -226,13 +227,17 @@ func countDefined(set map[string]bool, names ...string) int {
 	return n
 }
 
+// createsUsers finds the users table's CREATE TABLE, quoted or not, with IF NOT EXISTS or a
+// public schema.
+var createsUsers = regexp.MustCompile(`(?i)\bcreate\s+table\s+(if\s+not\s+exists\s+)?("?public"?\.)?("users"|users)[\s(]`)
+
 // decide checks the preconditions and works out what to bootstrap. It never touches a file.
 func (p *Project) decide(res *Resource, v *view) (*decisions, error) {
 	if !strings.Contains(p.GoMod, "github.com/go-raptor/connectors/bun/postgres") {
 		return nil, errors.New("the project has no Bun Postgres connector; run `raptor db init postgres --bun` first")
 	}
 	user := p.Models["User"]
-	if user == nil || !user.HasColumn("id") || !p.Services.has("AuthService", "CurrentUser") || !strings.Contains(p.Migrations, "create table users") {
+	if user == nil || !user.HasColumn("id") || !p.Services.has("AuthService", "CurrentUser") || !createsUsers.MatchString(p.Migrations) {
 		return nil, errors.New("raptor g resource needs the auth stack (models.User, AuthService.CurrentUser and a users migration); see the raptor-api-conventions skill's references/auth.md")
 	}
 	if _, exists := p.Models[res.Name]; exists {
