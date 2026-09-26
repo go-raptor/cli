@@ -1,0 +1,32 @@
+package controllers_test
+
+import (
+	"context"
+{{- if .UsesSuffix}}
+	"strconv"
+{{- end}}
+	"testing"
+{{- if or .UsesTime .UsesSuffix}}
+	"time"
+{{- end}}
+
+	"{{.Module}}/app/models"
+)
+
+// seed{{.Name}} inserts a {{.Name}} with sample values and deletes it when the test ends.
+func seed{{.Name}}(t *testing.T{{if .Owned}}, userID int64{{end}}) *models.{{.Name}} {
+	t.Helper()
+{{- if .UsesSuffix}}
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
+{{- end}}
+	{{.Var}} := &models.{{.Name}}{
+{{- range .Fields}}
+		{{.GoName}}: {{.Expr}},
+{{- end}}
+	}
+	mustInsert(t, db(t).NewInsert().Model({{.Var}}).Returning("*"))
+	t.Cleanup(func() {
+		_, _ = db(t).NewDelete().Model((*models.{{.Name}})(nil)).Where("id = ?", {{.Var}}.ID).Exec(context.Background())
+	})
+	return {{.Var}}
+}

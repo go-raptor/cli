@@ -241,3 +241,73 @@ func TestRenderBootstrapFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderSeeds(t *testing.T) {
+	flat := mustRender(t, "seed.go.tmpl", mustView(t, "Seminar", []string{"name:string", "lecture_hours:int", "division:ref", "notes:text"}, "", false))
+	for _, want := range []string{
+		"func seedSeminar(t *testing.T, userID int64) *models.Seminar {",
+		"seminar := &models.Seminar{ UserID: userID, Name: \"Sample\", LectureHours: 1, DivisionID: seedDivision(t).ID, Notes: \"Sample text\", }",
+		"mustInsert(t, db(t).NewInsert().Model(seminar).Returning(\"*\"))",
+	} {
+		loose(t, flat, want)
+	}
+
+	child := mustRender(t, "seed.go.tmpl", mustView(t, "Slot", []string{"kind:enum:lecture,lab", "starts_at:time"}, "Outcome", true))
+	for _, want := range []string{
+		"\"time\"",
+		"OutcomeID: seedOutcome(t, userID).ID,",
+		"Kind: models.SlotKindLecture,",
+		"StartsAt: time.Date(2026, time.January, 1, 9, 0, 0, 0, time.UTC),",
+	} {
+		loose(t, child, want)
+	}
+
+	idx := loadFixtureModels(t)
+	division, err := buildSeedModel(idx, idx["Division"], "example.com/shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := mustRender(t, "seed_model.go.tmpl", division)
+	for _, want := range []string{
+		"func seedDivision(t *testing.T) *models.Division {",
+		"suffix := strconv.FormatInt(time.Now().UnixNano(), 36)",
+		"division := &models.Division{ Name: \"Name \" + suffix, }",
+	} {
+		loose(t, src, want)
+	}
+}
+
+func TestRenderControllerTests(t *testing.T) {
+	flat := mustRender(t, "controller_test.go.tmpl", mustView(t, "Seminar", []string{"name:string", "division:ref"}, "", false))
+	for _, want := range []string{
+		"func seminarsRequest(t *testing.T, method, path string, session *http.Cookie, body any) *httptest.ResponseRecorder {",
+		"func validSeminarRequest(t *testing.T, userID int64) models.SeminarRequest { t.Helper() return models.SeminarRequest{ Name: \"Sample\", DivisionID: seedDivision(t).ID, } }",
+		"func TestSeminarsRequireAuth(t *testing.T) {",
+		"rec := seminarsRequest(t, http.MethodPost, \"/api/v1/seminars\", session, req)",
+		"req.Name = \"Updated\"",
+		"if updated.Name != \"Updated\" {",
+		"func TestSeminarsStrangerGets404(t *testing.T) {",
+		"seminar := seedSeminar(t, owner.ID)",
+		"func TestSeminarsCreateValidation(t *testing.T) {",
+	} {
+		loose(t, flat, want)
+	}
+	if strings.Contains(flat, "UnderStrangers") {
+		t.Error("a flat resource has no parent test")
+	}
+
+	child := mustRender(t, "controller_test.go.tmpl", mustView(t, "Topic", []string{"name:string"}, "Course", false))
+	for _, want := range []string{
+		"CourseID: seedCourse(t, userID).ID,",
+		"func TestTopicsUnderStrangersCourse(t *testing.T) {",
+		"req.CourseID = strangersCourse.ID",
+		"list := fmt.Sprintf(\"/api/v1/topics?courseId=%d\", strangersCourse.ID)",
+	} {
+		loose(t, child, want)
+	}
+
+	optional := mustRender(t, "controller_test.go.tmpl", mustView(t, "Counter", []string{"value:int"}, "", false))
+	if strings.Contains(optional, "CreateValidation") || strings.Contains(optional, "Updated") {
+		t.Error("with no required field, there is no validation test and no update assertion")
+	}
+}

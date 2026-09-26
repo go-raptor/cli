@@ -1,0 +1,32 @@
+package controllers_test
+
+import (
+	"context"
+	"testing"
+{{- if .SamplesUseTime}}
+	"time"
+{{- end}}
+
+	"{{.Module}}/app/models"
+)
+
+// seed{{.Name}} inserts a {{.LabelLower}} owned by userID, with sample values, and deletes it
+// when the test ends.
+func seed{{.Name}}(t *testing.T, userID int64) *models.{{.Name}} {
+	t.Helper()
+	{{.Var}} := &models.{{.Name}}{
+{{- if .Parent}}
+		{{.Parent.Field}}: seed{{.Parent.Name}}(t, userID).ID,
+{{- else}}
+		UserID: userID,
+{{- end}}
+{{- range .Fields}}{{if .SampleModel}}
+		{{.GoName}}: {{.SampleModel}},
+{{- end}}{{end}}
+	}
+	mustInsert(t, db(t).NewInsert().Model({{.Var}}).Returning("*"))
+	t.Cleanup(func() {
+		_, _ = db(t).NewDelete().Model((*models.{{.Name}})(nil)).Where("id = ?", {{.Var}}.ID).Exec(context.Background())
+	})
+	return {{.Var}}
+}
