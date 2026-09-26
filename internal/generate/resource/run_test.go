@@ -108,3 +108,45 @@ func TestRunPrintsTheEditsItCannotMake(t *testing.T) {
 		t.Error("a failed edit must leave the file unchanged")
 	}
 }
+
+// Finding I-2: registration is judged by the exact entry, and the output says what happened.
+func TestRunRegistersComponents(t *testing.T) {
+	copyFixture(t)
+	replaceInFile(t, "config/components/services.go", "&services.AuthService{},", "&services.AuthService{},\n\t\t&services.LectureNotesService{},")
+	writeFile(t, "config/components/controllers.go", "package components\n\nimport (\n\t\"example.com/shop/app/controllers\"\n\t\"github.com/go-raptor/raptor/v4\"\n)\n\nfunc Controllers() raptor.Controllers {\n\treturn raptor.Controllers{&controllers.AuthController{}, &controllers.NotesController{}}\n}\n")
+	var out bytes.Buffer
+	if err := run(t, Options{Name: "Note", Out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	loose(t, readFile(t, "config/components/services.go"), "&services.LectureNotesService{}, &services.DatabaseService{}, &services.ValidationService{}, &services.NotesService{}, }")
+	if got := readFile(t, "config/components/controllers.go"); strings.Count(got, "NotesController") != 1 {
+		t.Errorf("an already registered controller must not be added again:\n%s", got)
+	}
+	for _, want := range []string{"Updated config/components/services.go", "config/components/controllers.go already registers NotesController"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	for _, unwanted := range []string{"Updated config/components/controllers.go", "Add these by hand"} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Errorf("output has %q:\n%s", unwanted, out.String())
+		}
+	}
+}
+
+// Finding I-2: a one-line literal is edited into valid, gofmt'd Go.
+func TestRunRegistersInAOneLineLiteral(t *testing.T) {
+	copyFixture(t)
+	writeFile(t, "config/components/controllers.go", "package components\n\nimport (\n\t\"example.com/shop/app/controllers\"\n\t\"github.com/go-raptor/raptor/v4\"\n)\n\nfunc Controllers() raptor.Controllers {\n\treturn raptor.Controllers{&controllers.AuthController{}}\n}\n")
+	var out bytes.Buffer
+	if err := run(t, Options{Name: "Course", Out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	want := "\treturn raptor.Controllers{&controllers.AuthController{}, &controllers.CoursesController{}}\n"
+	if got := readFile(t, "config/components/controllers.go"); !strings.Contains(got, want) {
+		t.Errorf("controllers.go:\n%s", got)
+	}
+	if strings.Contains(out.String(), "Add these by hand") {
+		t.Errorf("the edit should have been made:\n%s", out.String())
+	}
+}

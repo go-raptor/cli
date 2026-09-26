@@ -16,10 +16,12 @@ import (
 type File struct{ Path, Content string }
 
 // Edit changes an existing file. Manual is printed when Apply fails, and the file is left alone.
+// Unchanged is printed when Apply returns the file as it was.
 type Edit struct {
-	Path   string
-	Apply  func(src string) (string, error)
-	Manual string
+	Path      string
+	Apply     func(src string) (string, error)
+	Manual    string
+	Unchanged string
 }
 
 // Generation is everything one run writes.
@@ -126,10 +128,12 @@ func registerEdit(module, kind, structName string) Edit {
 	if kind == "controller" {
 		list = "raptor.Controllers{…}"
 	}
+	path := filepath.Join("config", "components", kind+"s.go")
 	return Edit{
-		Path:   filepath.Join("config", "components", kind+"s.go"),
-		Apply:  func(src string) (string, error) { return components.AddEntry(src, module, kind, structName) },
-		Manual: fmt.Sprintf("add &%ss.%s{} to %s", kind, structName, list),
+		Path:      path,
+		Apply:     func(src string) (string, error) { return components.AddEntry(src, module, kind, structName) },
+		Manual:    fmt.Sprintf("add &%ss.%s{} to %s", kind, structName, list),
+		Unchanged: fmt.Sprintf("%s already registers %s", path, structName),
 	}
 }
 
@@ -184,7 +188,14 @@ func Run(o Options) error {
 		if err == nil {
 			out, err = e.Apply(string(src))
 		}
-		if err == nil && out != string(src) {
+		if err == nil && out == string(src) {
+			if e.Unchanged == "" {
+				e.Unchanged = "Unchanged " + e.Path
+			}
+			fmt.Fprintln(o.Out, e.Unchanged)
+			continue
+		}
+		if err == nil {
 			err = os.WriteFile(e.Path, []byte(out), 0o644)
 		}
 		if err != nil {
