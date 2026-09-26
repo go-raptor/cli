@@ -187,20 +187,30 @@ func TestDecideSkipsIntegrationTests(t *testing.T) {
 		name  string
 		specs []string
 		setup func(t *testing.T)
-		want  string // in the reason; "" accepts any
+		want  string   // in the reason; "" accepts any
+		not   []string // helpers the reason must not name
 	}{
+		// Finding I-5: the reason names exactly the helpers that are missing or differ.
 		{"partial harness", nil, func(t *testing.T) {
-			writeFile(t, "app/controllers/harness_test.go", "package controllers_test\n\nfunc login() {}\n")
-		}, ""},
-		{"no login route", nil, func(t *testing.T) { replaceInFile(t, "config/routes.yaml", "Auth.Login", "Auth.SignIn") }, "Auth.Login"},
+			writeFile(t, "app/controllers/harness_test.go", harness(map[string]string{"db": "", "mustInsert": "", "newUser": ""}))
+		}, "the controllers tests' harness does not match what the generated tests call: it lacks db, mustInsert, newUser", []string{"login", "withSession"}},
+		{"harness signature", nil, func(t *testing.T) {
+			writeFile(t, "app/controllers/harness_test.go", harness(map[string]string{
+				"newUser": "func newUser(t *testing.T) *models.User { return nil }",
+			}))
+		}, "the controllers tests' harness does not match what the generated tests call: newUser is func(*testing.T) *models.User, not func(*testing.T, string) *models.User", []string{"lacks", "db", "mustInsert", "login", "withSession"}},
+		{"harness helper that is not a function", nil, func(t *testing.T) {
+			writeFile(t, "app/controllers/harness_test.go", harness(map[string]string{"login": "var login = 1"}))
+		}, "the controllers tests' harness does not match what the generated tests call: login is not a function", []string{"lacks", "db", "mustInsert", "newUser", "withSession"}},
+		{"no login route", nil, func(t *testing.T) { replaceInFile(t, "config/routes.yaml", "Auth.Login", "Auth.SignIn") }, "Auth.Login", nil},
 		{"unseedable ref", []string{"name:string", "kind:ref"}, func(t *testing.T) {
 			writeFile(t, "app/models/kind.go", "package models\n\nimport \"github.com/uptrace/bun\"\n\ntype KindCode string\n\ntype Kind struct {\n\tbun.BaseModel `bun:\"table:kinds,alias:kinds\"`\n\n\tID   int64    `bun:\"id,pk,autoincrement\" json:\"id\"`\n\tCode KindCode `bun:\"code,notnull\" json:\"code\"`\n}\n")
-		}, "no sample value for type KindCode"},
+		}, "no sample value for type KindCode", nil},
 		// Finding I-1: the harness sets the user's fields in a composite literal, which can't
 		// reach fields promoted from an embedded struct.
 		{"user fields from a mixin", nil, func(t *testing.T) {
 			writeFile(t, "app/models/user.go", userWithCredentials)
-		}, "models.User's Username comes from the embedded Credentials"},
+		}, "models.User's Username comes from the embedded Credentials", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -213,7 +223,48 @@ func TestDecideSkipsIntegrationTests(t *testing.T) {
 			if d.Tests || d.Skip == "" || !strings.Contains(d.Skip, tt.want) {
 				t.Fatalf("integration tests should be skipped with a reason mentioning %q: %+v", tt.want, d)
 			}
+			for _, name := range tt.not {
+				if strings.Contains(d.Skip, name) {
+					t.Errorf("the reason names %s, which is neither missing nor different: %s", name, d.Skip)
+				}
+			}
 		})
+	}
+}
+
+// harness is a controllers_test file declaring the five helpers the generated tests call, with
+// the spec's signatures but other parameter names. overrides replaces a helper's declaration, or
+// with "" leaves it out.
+func harness(overrides map[string]string) string {
+	decls := []struct{ name, decl string }{
+		{"db", "func db(tb *testing.T) *bun.DB { return nil }"},
+		{"mustInsert", "func mustInsert(tb *testing.T, query *bun.InsertQuery) {}"},
+		{"newUser", "func newUser(tb *testing.T, name string) *models.User { return nil }"},
+		{"login", "func login(tb *testing.T, name string) *http.Cookie { return nil }"},
+		{"withSession", "func withSession(cookie *http.Cookie) raptor.TestRequestOption { return nil }"},
+	}
+	src := "package controllers_test\n"
+	for _, d := range decls {
+		if decl, ok := overrides[d.name]; ok {
+			d.decl = decl
+		}
+		if d.decl != "" {
+			src += "\n" + d.decl + "\n"
+		}
+	}
+	return src
+}
+
+// Finding I-5: a harness with the spec's signatures is reused, whatever its parameter names.
+func TestDecideReusesAMatchingHarness(t *testing.T) {
+	copyFixture(t)
+	writeFile(t, "app/controllers/harness_test.go", harness(nil))
+	d, err := decideFor(t, "Course", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Tests || d.Harness {
+		t.Fatalf("the harness should be reused: %+v", d)
 	}
 }
 

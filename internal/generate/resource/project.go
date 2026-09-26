@@ -17,6 +17,7 @@ import (
 // decls are one package's top-level declarations, as far as the preconditions need them.
 type decls struct {
 	Funcs     map[string]bool
+	Sigs      map[string]string // func → its signature without names: func(*testing.T, string) *models.User
 	Vars      map[string]bool
 	Types     map[string]bool
 	TypeFiles map[string]string          // type → the file that declares it
@@ -33,7 +34,7 @@ func (d decls) declares(name string) bool { return d.Funcs[name] || d.Vars[name]
 // (_test) package.
 func loadDecls(dir string, tests bool) (decls, error) {
 	d := decls{
-		Funcs: map[string]bool{}, Vars: map[string]bool{}, Types: map[string]bool{},
+		Funcs: map[string]bool{}, Sigs: map[string]string{}, Vars: map[string]bool{}, Types: map[string]bool{},
 		TypeFiles: map[string]string{}, Methods: map[string]map[string]bool{}, Fields: map[string]map[string]bool{},
 	}
 	entries, err := os.ReadDir(dir)
@@ -62,6 +63,7 @@ func loadDecls(dir string, tests bool) (decls, error) {
 			case *ast.FuncDecl:
 				if decl.Recv == nil {
 					d.Funcs[decl.Name.Name] = true
+					d.Sigs[decl.Name.Name] = signature(decl.Type)
 					continue
 				}
 				recv := strings.TrimPrefix(types.ExprString(decl.Recv.List[0].Type), "*")
@@ -94,6 +96,32 @@ func loadDecls(dir string, tests bool) (decls, error) {
 		}
 	}
 	return d, nil
+}
+
+// signature writes a function type with its parameter and result types only, so two
+// declarations compare equal whatever their parameters are named.
+func signature(ft *ast.FuncType) string {
+	typesOf := func(fields *ast.FieldList) []string {
+		var out []string
+		if fields == nil {
+			return out
+		}
+		for _, f := range fields.List {
+			for range max(1, len(f.Names)) {
+				out = append(out, types.ExprString(f.Type))
+			}
+		}
+		return out
+	}
+	sig := "func(" + strings.Join(typesOf(ft.Params), ", ") + ")"
+	switch results := typesOf(ft.Results); len(results) {
+	case 0:
+	case 1:
+		sig += " " + results[0]
+	default:
+		sig += " (" + strings.Join(results, ", ") + ")"
+	}
+	return sig
 }
 
 // Project is what the generator learns about the project before writing anything.
@@ -165,7 +193,15 @@ type decisions struct {
 	Seeds                                                              []*Model // models that need a generated seed function
 }
 
-var harnessHelpers = []string{"db", "mustInsert", "newUser", "login", "withSession"}
+// harnessHelpers are the helpers the generated tests call, with the signatures testing.md gives
+// them.
+var harnessHelpers = []struct{ name, sig string }{
+	{"db", "func(*testing.T) *bun.DB"},
+	{"mustInsert", "func(*testing.T, *bun.InsertQuery)"},
+	{"newUser", "func(*testing.T, string) *models.User"},
+	{"login", "func(*testing.T, string) *http.Cookie"},
+	{"withSession", "func(*http.Cookie) raptor.TestRequestOption"},
+}
 
 func countDefined(set map[string]bool, names ...string) int {
 	n := 0
@@ -265,9 +301,21 @@ func (p *Project) decideTests(v *view, d *decisions) string {
 	if !strings.Contains(p.Routes, "Auth.Login") {
 		return "config/routes.yaml has no Auth.Login route for the tests to log in through"
 	}
-	switch countDefined(p.ControllerTests.Funcs, harnessHelpers...) {
-	case len(harnessHelpers):
-	case 0:
+	tests := p.ControllerTests
+	var missing, different []string
+	for _, h := range harnessHelpers {
+		switch sig, isFunc := tests.Sigs[h.name]; {
+		case isFunc && sig != h.sig:
+			different = append(different, fmt.Sprintf("%s is %s, not %s", h.name, sig, h.sig))
+		case !isFunc && tests.declares(h.name):
+			different = append(different, h.name+" is not a function")
+		case !isFunc:
+			missing = append(missing, h.name)
+		}
+	}
+	switch {
+	case len(missing) == 0 && len(different) == 0: // reuse the project's harness
+	case len(missing) == len(harnessHelpers):
 		for _, f := range []string{"Username", "Password", "Email"} {
 			field, ok := p.Models["User"].Field(f)
 			if !ok {
@@ -282,7 +330,10 @@ func (p *Project) decideTests(v *view, d *decisions) string {
 		}
 		d.Harness = true
 	default:
-		return "the controllers tests define only some of " + strings.Join(harnessHelpers, ", ")
+		if len(missing) > 0 {
+			different = append([]string{"it lacks " + strings.Join(missing, ", ")}, different...)
+		}
+		return "the controllers tests' harness does not match what the generated tests call: " + strings.Join(different, "; ")
 	}
 	d.SetupTest = !p.ControllerTests.Vars["app"]
 	seeds, err := p.seedClosure(v)
