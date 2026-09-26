@@ -94,3 +94,23 @@ type Binder struct {
 	Owned
 	CourseID int64 `bun:"course_id,notnull" json:"courseId"`
 }
+
+// Record's owner relation has no join: Bun joins owner_id to users.id.
+type Record struct {
+	bun.BaseModel `bun:"table:records,alias:records"`
+
+	ID      int64 `bun:"id,pk,autoincrement" json:"id"`
+	OwnerID int64 `bun:"owner_id,notnull" json:"-"`
+
+	Owner *User `bun:"rel:belongs-to" json:"-"`
+}
+
+// Sheet belongs to an owned Folder through holder_id, with Bun's default join.
+type Sheet struct {
+	bun.BaseModel `bun:"table:sheets,alias:sheets"`
+
+	ID       int64 `bun:"id,pk,autoincrement" json:"id"`
+	HolderID int64 `bun:"holder_id,notnull" json:"holderId"`
+
+	Holder *Folder `bun:"rel:belongs-to" json:"-"`
+}

@@ -153,6 +153,10 @@ func TestBuildViewErrors(t *testing.T) {
 		{"Seminar", "", []string{"clip:ref"}, "field clip: Clip has a belongs-to relation to media.Source"},
 		// Fix round 2, I-1(a)
 		{"Seminar", "", []string{"vault:ref"}, "field vault: Vault embeds common.BaseModel"},
+		// Fix round 2, I-1(b)
+		{"Seminar", "", []string{"record:ref"}, "field record: Record references users through owner_id"},
+		{"Seminar", "", []string{"sheet:ref"}, "field sheet: Sheet is owned by a user; use --parent Sheet"},
+		{"Seminar", "Record", nil, "Record references users through owner_id, but the ownership chain needs a user_id column"},
 		// --parent fails closed on an owner column it cannot follow
 		{"Seminar", "Album", nil, "Album references users through owner_id"},
 		{"Seminar", "Track", nil, "not owned by a user"},

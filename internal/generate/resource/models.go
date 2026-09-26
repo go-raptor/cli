@@ -231,11 +231,19 @@ func (m *Model) addFields(sd structDecl, structs map[string]structDecl, at embed
 			switch col, _, _ := strings.Cut(tag, ","); {
 			case strings.Contains(tag, "rel:"):
 				if strings.Contains(tag, "rel:belongs-to") {
+					target, joined := strings.TrimPrefix(goType, "*"), false
 					for _, part := range strings.Split(tag, ",") {
 						if join, ok := strings.CutPrefix(part, "join:"); ok {
 							joinCol, _, _ := strings.Cut(join, "=")
-							m.BelongsTo[joinCol] = strings.TrimPrefix(goType, "*")
+							m.BelongsTo[joinCol], joined = target, true
 						}
+					}
+					if !joined { // Bun's default: <field>_id = <target>.id
+						field := naming.Snake(n.Name)
+						if col != "" && !strings.Contains(col, ":") {
+							field = col
+						}
+						m.BelongsTo[field+"_id"] = target
 					}
 				}
 			case col == "-":

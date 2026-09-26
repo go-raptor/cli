@@ -36,6 +36,9 @@ func TestOwnerChainPredicate(t *testing.T) {
 			"pages.folder_id IN (SELECT id FROM folders WHERE user_id = ?)"},
 		{"Binder", "sheets", "binder_id",
 			"sheets.binder_id IN (SELECT id FROM binders WHERE user_id = ?)"},
+		// Fix round 2, I-1(b): the chain follows a belongs-to without join:.
+		{"Sheet", "pages", "sheet_id",
+			"pages.sheet_id IN (\n\tSELECT sheets.id FROM sheets\n\tJOIN folders ON folders.id = sheets.holder_id\n\tWHERE folders.user_id = ?\n)"},
 		{"Doc", "pages", "doc_id",
 			"pages.doc_id IN (\n\tSELECT docs.id FROM docs\n\tJOIN folders ON folders.id = docs.folder_id\n\tWHERE folders.user_id = ?\n)"},
 	}
@@ -60,6 +63,8 @@ func TestOwnerChainErrors(t *testing.T) {
 		// Finding I-1: an owner under another column name fails closed, and says why.
 		"Album": "Album references users through owner_id",
 		"Track": "not owned by a user",
+		// Fix round 2, I-1(b)
+		"Record": "Record references users through owner_id, but the ownership chain needs a user_id column",
 	} {
 		_, err := idx.OwnerChain(name)
 		if err == nil || !strings.Contains(err.Error(), want) {
@@ -92,6 +97,9 @@ func TestCheckRefTarget(t *testing.T) {
 		// Fix round 2, I-1(a): a BaseModel that isn't bun's.
 		"Vault": "Vault embeds common.BaseModel, which is not declared in app/models",
 		"Safe":  "Safe is owned by a user; use --parent Safe",
+		// Fix round 2, I-1(b): belongs-to relations without join:
+		"Record": "Record references users through owner_id",
+		"Sheet":  "Sheet is owned by a user; use --parent Sheet",
 	} {
 		err := idx.CheckRefTarget(name)
 		if err == nil || !strings.Contains(err.Error(), want) {

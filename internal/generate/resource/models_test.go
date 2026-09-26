@@ -95,6 +95,17 @@ func TestLoadModelsKnowsBunsBaseModel(t *testing.T) {
 	}
 }
 
+// Fix round 2, I-1(b): a belongs-to without join: uses Bun's default, <field>_id.
+func TestLoadModelsDefaultsTheBelongsToJoin(t *testing.T) {
+	idx := loadFixtureModels(t)
+	if got := idx["Record"].BelongsTo; !reflect.DeepEqual(got, map[string]string{"owner_id": "User"}) {
+		t.Errorf("Record.BelongsTo = %v", got)
+	}
+	if got := idx["Sheet"].BelongsTo; !reflect.DeepEqual(got, map[string]string{"holder_id": "Folder"}) {
+		t.Errorf("Sheet.BelongsTo = %v", got)
+	}
+}
+
 func TestLoadModelsWithoutADirectory(t *testing.T) {
 	idx, err := LoadModels("testdata/nope")
 	if err != nil || len(idx) != 0 {
