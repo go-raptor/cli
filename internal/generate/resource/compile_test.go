@@ -75,6 +75,9 @@ func TestEdgeCasesCompile(t *testing.T) {
 			{Name: "StrangersModel", Fields: []string{"name:string"}, Parent: "Model", Movable: true},
 			// Finding I-3: a model file named lab_test.go would be a test file.
 			{Name: "LabTest", Fields: []string{"name:string"}},
+			// Fix round 2, N-2: names ending in a GOOS: no generated file may be constrained to it.
+			{Name: "StoreWindows", Fields: []string{"name:string"}},
+			{Name: "ReleaseAndroid", Fields: []string{"name:string"}},
 		}},
 		{"seeds", map[string]string{
 			"app/models/context.go": referenceModel("Context", "contexts"),

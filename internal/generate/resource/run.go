@@ -46,35 +46,35 @@ func Plan(res *Resource, p *Project, now time.Time) (*Generation, error) {
 	}
 	g := &Generation{}
 	snake := naming.Snake(res.Name)
-	modelFile := snake + ".go"
-	if goSkips(modelFile) {
-		modelFile = snake + "_model.go"
-	}
+	models, services, controllers := filepath.Join("app", "models"), filepath.Join("app", "services"), filepath.Join("app", "controllers")
 	for _, s := range []struct {
-		ok         bool
-		path, tmpl string
+		ok        bool
+		dir, stem string
+		test      bool // a _test.go file
+		tmpl      string
 	}{
-		{true, filepath.Join("app", "models", modelFile), "model.go.tmpl"},
-		{true, filepath.Join("app", "services", v.Table+"_service.go"), "service.go.tmpl"},
-		{true, filepath.Join("app", "controllers", v.Table+"_controller.go"), "controller.go.tmpl"},
-		{d.DatabaseService, filepath.Join("app", "services", "database_service.go"), "database_service.go.tmpl"},
-		{d.ValidationService, filepath.Join("app", "services", "validation_service.go"), "validation_service.go.tmpl"},
-		{d.Helpers, filepath.Join("app", "controllers", "helpers.go"), "helpers.go.tmpl"},
-		{d.MaxChars, filepath.Join("app", "models", "validation.go"), "validation.go.tmpl"},
-		{d.SchemasTest, filepath.Join("app", "models", "schemas_test.go"), "schemas_test.go.tmpl"},
-		{d.Tests, filepath.Join("app", "controllers", v.Table+"_controller_test.go"), "controller_test.go.tmpl"},
-		{d.Tests, filepath.Join("app", "controllers", "seed_"+snake+"_test.go"), "seed.go.tmpl"},
-		{d.Tests && d.SetupTest, filepath.Join("app", "controllers", "setup_test.go"), "setup_test.go.tmpl"},
-		{d.Tests && d.Harness, filepath.Join("app", "controllers", "harness_test.go"), "harness_test.go.tmpl"},
+		{true, models, snake, false, "model.go.tmpl"},
+		{true, services, v.Table + "_service", false, "service.go.tmpl"},
+		{true, controllers, v.Table + "_controller", false, "controller.go.tmpl"},
+		{d.DatabaseService, services, "database_service", false, "database_service.go.tmpl"},
+		{d.ValidationService, services, "validation_service", false, "validation_service.go.tmpl"},
+		{d.Helpers, controllers, "helpers", false, "helpers.go.tmpl"},
+		{d.MaxChars, models, "validation", false, "validation.go.tmpl"},
+		{d.SchemasTest, models, "schemas", true, "schemas_test.go.tmpl"},
+		{d.Tests, controllers, v.Table + "_controller", true, "controller_test.go.tmpl"},
+		{d.Tests, controllers, "seed_" + snake, true, "seed.go.tmpl"},
+		{d.Tests && d.SetupTest, controllers, "setup", true, "setup_test.go.tmpl"},
+		{d.Tests && d.Harness, controllers, "harness", true, "harness_test.go.tmpl"},
 	} {
 		if !s.ok {
 			continue
 		}
+		path := goFile(s.dir, s.stem, s.test)
 		content, err := renderGo(s.tmpl, v)
 		if err != nil {
 			return nil, err
 		}
-		g.Files = append(g.Files, File{s.path, content})
+		g.Files = append(g.Files, File{path, content})
 	}
 	if d.Tests {
 		for _, m := range d.Seeds {
@@ -86,7 +86,7 @@ func Plan(res *Resource, p *Project, now time.Time) (*Generation, error) {
 			if err != nil {
 				return nil, err
 			}
-			g.Files = append(g.Files, File{filepath.Join("app", "controllers", "seed_"+naming.Snake(m.Name)+"_test.go"), content})
+			g.Files = append(g.Files, File{goFile(controllers, "seed_"+naming.Snake(m.Name), true), content})
 		}
 	} else {
 		g.Notes = append(g.Notes, "No integration tests were generated: "+d.Skip+".")
@@ -145,17 +145,31 @@ func Plan(res *Resource, p *Project, now time.Time) (*Generation, error) {
 	return g, nil
 }
 
-// goSkips reports whether the go command leaves a file of this name out of the package: a
-// _test.go file, or one whose name limits it to an OS or architecture (x_windows.go).
-func goSkips(name string) bool {
-	if strings.HasSuffix(name, "_test.go") {
-		return true
+// goFile names a generated Go file dir/stem.go, or dir/stem_test.go for a test file, adding
+// "_model" to the stem where the go command would leave the file out of a normal build: a
+// non-test stem that ends in _test (lab_test.go), or one that ends in a GOOS or GOARCH
+// (store_windows.go, seed_release_android_test.go).
+func goFile(dir, stem string, test bool) string {
+	name := func(stem string) string {
+		if test {
+			return stem + "_test.go"
+		}
+		return stem + ".go"
 	}
+	if !test && strings.HasSuffix(stem, "_test") || constrained(name(stem)) {
+		stem += "_model"
+	}
+	return filepath.Join(dir, name(stem))
+}
+
+// constrained reports whether a Go file's name limits it to some OS or architecture. Every GOOS
+// fails to match on linux or windows, and every GOARCH on amd64 or arm64.
+func constrained(name string) bool {
 	for _, target := range [][2]string{{"linux", "amd64"}, {"windows", "arm64"}} {
 		ctxt := build.Default
 		ctxt.GOOS, ctxt.GOARCH = target[0], target[1]
 		ctxt.OpenFile = func(string) (io.ReadCloser, error) {
-			return io.NopCloser(strings.NewReader("package models\n")), nil
+			return io.NopCloser(strings.NewReader("package x\n")), nil
 		}
 		if ok, err := ctxt.MatchFile(".", name); err != nil || !ok {
 			return true

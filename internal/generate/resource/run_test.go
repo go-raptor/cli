@@ -2,6 +2,7 @@ package resource
 
 import (
 	"bytes"
+	"go/build"
 	"io"
 	"os"
 	"path/filepath"
@@ -253,5 +254,42 @@ func TestRunSkipsTestsBesideAnotherSetup(t *testing.T) {
 	}
 	if _, err := os.Stat("app/controllers/courses_controller_test.go"); err == nil {
 		t.Error("no integration tests should be written")
+	}
+}
+
+// Fix round 2, N-2: no generated Go file may carry a GOOS or GOARCH build constraint in its name,
+// test files included (x_windows_test.go builds only on Windows).
+func TestPlanWritesNoConstrainedPath(t *testing.T) {
+	targets := [][2]string{{"linux", "amd64"}, {"windows", "arm64"}, {"darwin", "arm64"}, {"android", "arm64"}, {"js", "wasm"}}
+	builds := func(name string) bool {
+		for _, target := range targets {
+			ctxt := build.Default
+			ctxt.GOOS, ctxt.GOARCH = target[0], target[1]
+			ctxt.OpenFile = func(string) (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("package x\n")), nil }
+			if ok, err := ctxt.MatchFile(".", name); err != nil || !ok {
+				return false
+			}
+		}
+		return true
+	}
+	for _, name := range []string{"StoreWindows", "ReleaseAndroid"} {
+		copyFixture(t)
+		p, err := Inspect("example.com/shop")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := NewResource(name, []string{"name:string"}, "", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := Plan(res, p, testNow)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range g.Files {
+			if base := filepath.Base(f.Path); strings.HasSuffix(base, ".go") && !builds(base) {
+				t.Errorf("%s: %s builds only on some platforms", name, f.Path)
+			}
+		}
 	}
 }
