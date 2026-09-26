@@ -1,0 +1,12 @@
+package components
+
+import (
+	"example.com/shop/app/services"
+	"github.com/go-raptor/raptor/v4"
+)
+
+func Services() raptor.Services {
+	return raptor.Services{
+		&services.AuthService{},
+	}
+}
