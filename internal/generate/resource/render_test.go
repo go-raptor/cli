@@ -222,7 +222,6 @@ func TestRenderBootstrapFiles(t *testing.T) {
 		},
 		"setup_test.go.tmpl": {
 			"\"example.com/shop/config/components\"",
-			"os.Setenv(\"SPA_OPTIONAL\", \"true\")",
 			"app = raptor.NewTestApp(components.New(), config.Routes())",
 		},
 		"harness_test.go.tmpl": {

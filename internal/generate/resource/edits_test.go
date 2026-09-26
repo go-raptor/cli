@@ -68,6 +68,43 @@ func TestAddRoutesAdaptsToTheFile(t *testing.T) {
 	}
 }
 
+func TestAddAppSetting(t *testing.T) {
+	for name, tt := range map[string]struct{ src, want string }{
+		"appends to the app block": {
+			"general:\n  log_level: error\n\napp:\n  llm_provider: \"stub\"\n\ndatabase:\n  name: shop_test\n",
+			"general:\n  log_level: error\n\napp:\n  llm_provider: \"stub\"\n  # why\n  spa_optional: \"true\"\n\ndatabase:\n  name: shop_test\n",
+		},
+		"fills an empty app block": {
+			"app:\n\ndatabase:\n  name: shop_test\n",
+			"app:\n  # why\n  spa_optional: \"true\"\n\ndatabase:\n  name: shop_test\n",
+		},
+		"adds an app block in the file's indentation": {
+			"database:\n    name: shop_test",
+			"database:\n    name: shop_test\n\napp:\n    # why\n    spa_optional: \"true\"\n",
+		},
+		"keeps a value the project already chose": {
+			"app: # settings\n  spa_optional: \"false\"\n",
+			"app: # settings\n  spa_optional: \"false\"\n",
+		},
+	} {
+		got, err := addAppSetting(tt.src, "why", "spa_optional", "true")
+		if err != nil || got != tt.want {
+			t.Errorf("%s:\n got %q\nwant %q\n%v", name, got, tt.want, err)
+		}
+	}
+}
+
+func TestAddAppSettingRefuses(t *testing.T) {
+	for name, tt := range map[string]struct{ src, want string }{
+		"CRLF":         {"app:\r\n  llm_provider: stub\r\n", "CRLF"},
+		"flow mapping": {"app: {llm_provider: stub}\n", "not a block mapping"},
+	} {
+		if _, err := addAppSetting(tt.src, "why", "spa_optional", "true"); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: error = %v, want it to mention %q", name, err, tt.want)
+		}
+	}
+}
+
 func TestAddRoutesRefuses(t *testing.T) {
 	for name, tt := range map[string]struct{ src, want string }{
 		"no /api/v1": {"routes:\n  /: SPA.Index\n", "no /api/v1: key"},

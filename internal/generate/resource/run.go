@@ -142,8 +142,25 @@ func Plan(res *Resource, p *Project, now time.Time) (*Generation, error) {
 		Apply:  func(src string) (string, error) { return addRoutes(src, v.Route, v.Plural) },
 		Manual: "under /api/v1: add\n" + strings.Join(routesBlock(2, 2, v.Route, v.Plural), "\n"),
 	})
+	// The generated TestMain boots the whole app, and a test run has no frontend build, which the
+	// SPA controller refuses at Setup unless app.spa_optional relaxes it.
+	if spa := p.requirement(spaModule); d.Tests && d.SetupTest && spa != "" {
+		g.Edits = append(g.Edits, Edit{
+			Path: ".raptor.test.yaml",
+			Apply: func(src string) (string, error) {
+				return addAppSetting(src, "Tests run without a frontend build; this lets the SPA controller boot anyway.", "spa_optional", "true")
+			},
+			Manual:    `under app: add spa_optional: "true", so the tests boot without a frontend build`,
+			Unchanged: ".raptor.test.yaml already sets spa_optional",
+		})
+		if strings.HasPrefix(spa, "v2.0.") {
+			g.Notes = append(g.Notes, fmt.Sprintf("%s %s ignores app.spa_optional, so the generated tests cannot boot without a frontend build. Upgrade it: go get %s@v2.1.0", spaModule, spa, spaModule))
+		}
+	}
 	return g, nil
 }
+
+const spaModule = "github.com/go-raptor/controllers/spa/v2"
 
 // goFile names a generated Go file dir/stem.go, or dir/stem_test.go for a test file, adding
 // "_model" to the stem where the go command would leave the file out of a normal build: a

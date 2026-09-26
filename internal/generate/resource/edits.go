@@ -166,3 +166,70 @@ func addRoutes(src, route, controller string) (string, error) {
 	}
 	return result, nil
 }
+
+// addAppSetting adds a commented key: "value" to the end of a config file's app: mapping,
+// matching the file's indentation, and adds the mapping when there is none. A key the file
+// already sets is the project's decision, so the file comes back unchanged. The result must
+// parse as YAML.
+func addAppSetting(src, comment, key, value string) (string, error) {
+	if strings.Contains(src, "\r") {
+		return "", errors.New("the config file uses CRLF line endings")
+	}
+	lines := strings.Split(strings.TrimRight(src, "\n"), "\n")
+	indent := 2
+	for _, l := range lines {
+		if trimmed := strings.TrimSpace(l); trimmed != "" && !strings.HasPrefix(trimmed, "#") && leadingSpaces(l) > 0 {
+			indent = leadingSpaces(l)
+			break
+		}
+	}
+	app := -1
+	for i, l := range lines {
+		rest, ok := strings.CutPrefix(l, "app:")
+		if !ok {
+			continue
+		}
+		if rest = strings.TrimSpace(rest); rest != "" && !strings.HasPrefix(rest, "#") {
+			return "", errors.New("app: is not a block mapping")
+		}
+		app = i
+		break
+	}
+	setting := func(indent int) []string {
+		pad := strings.Repeat(" ", indent)
+		return []string{pad + "# " + comment, pad + key + ": " + strconv.Quote(value)}
+	}
+	var out []string
+	if app == -1 {
+		out = append(append(lines, "", "app:"), setting(indent)...)
+	} else {
+		child, last := -1, app
+		for i := app + 1; i < len(lines); i++ {
+			trimmed := strings.TrimSpace(lines[i])
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			ind := leadingSpaces(lines[i])
+			if ind == 0 {
+				break
+			}
+			if child == -1 {
+				child = ind
+			}
+			if ind == child && strings.HasPrefix(trimmed, key+":") {
+				return src, nil
+			}
+			last = i
+		}
+		if child == -1 {
+			child = indent
+		}
+		out = append(append(append([]string{}, lines[:last+1]...), setting(child)...), lines[last+1:]...)
+	}
+	result := strings.Join(out, "\n") + "\n"
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(result), &parsed); err != nil {
+		return "", fmt.Errorf("the edited config file would not parse: %w", err)
+	}
+	return result, nil
+}

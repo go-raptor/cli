@@ -197,6 +197,17 @@ func Inspect(module string) (*Project, error) {
 	return p, nil
 }
 
+// requirement is the version of module that go.mod requires, or "" when it requires none.
+func (p *Project) requirement(module string) string {
+	for line := range strings.Lines(p.GoMod) {
+		fields := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "require "))
+		if len(fields) >= 2 && fields[0] == module {
+			return fields[1]
+		}
+	}
+	return ""
+}
+
 // decisions records what the generator bootstraps and whether it writes integration tests.
 type decisions struct {
 	DatabaseService, ValidationService, Helpers, MaxChars, SchemasTest bool

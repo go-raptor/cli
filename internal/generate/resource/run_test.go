@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 )
 
 var testNow = time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
@@ -254,6 +256,92 @@ func TestRunSkipsTestsBesideAnotherSetup(t *testing.T) {
 	}
 	if _, err := os.Stat("app/controllers/courses_controller_test.go"); err == nil {
 		t.Error("no integration tests should be written")
+	}
+}
+
+// withSPA makes the fixture require controllers/spa at version, as an app serving its frontend
+// does.
+func withSPA(t *testing.T, version string) {
+	t.Helper()
+	replaceInFile(t, "go.mod", "\tgithub.com/go-raptor/raptor/v4 v4.4.0",
+		"\tgithub.com/go-raptor/controllers/spa/v2 "+version+"\n\tgithub.com/go-raptor/raptor/v4 v4.4.0")
+}
+
+// A generated TestMain boots the whole app, and a test run has no frontend build, so an app
+// serving one needs app.spa_optional in its test config.
+func TestRunMakesTheSPAOptionalInTests(t *testing.T) {
+	copyFixture(t)
+	withSPA(t, "v2.1.0")
+	writeFile(t, ".raptor.test.yaml", "database:\n  name: shop_test\n")
+	var out bytes.Buffer
+	if err := run(t, Options{Name: "Course", Out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		App map[string]string `yaml:"app"`
+	}
+	if err := yaml.Unmarshal([]byte(readFile(t, ".raptor.test.yaml")), &cfg); err != nil || cfg.App["spa_optional"] != "true" {
+		t.Errorf("app.spa_optional = %q (%v), want \"true\"", cfg.App["spa_optional"], err)
+	}
+	if !strings.Contains(out.String(), "Updated .raptor.test.yaml") || strings.Contains(out.String(), "Upgrade it") {
+		t.Errorf("want the edit reported and no upgrade note for v2.1.0:\n%s", out.String())
+	}
+}
+
+// Only the TestMain the generator writes is its business: an app without the SPA controller has
+// nothing to relax, and a project's own TestMain boots the app however it chose to.
+func TestRunLeavesTheTestConfigAlone(t *testing.T) {
+	for name, setup := range map[string]func(t *testing.T){
+		"without the SPA controller": func(t *testing.T) {},
+		"beside the project's own TestMain": func(t *testing.T) {
+			withSPA(t, "v2.1.0")
+			writeFile(t, "app/controllers/setup_test.go", "package controllers_test\n\nimport (\n\t\"testing\"\n\n\t\"github.com/go-raptor/raptor/v4\"\n)\n\nvar app *raptor.Raptor\n\nfunc TestMain(m *testing.M) {}\n")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			copyFixture(t)
+			setup(t)
+			const cfg = "database:\n  name: shop_test\n"
+			writeFile(t, ".raptor.test.yaml", cfg)
+			if err := run(t, Options{Name: "Course"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat("app/controllers/courses_controller_test.go"); err != nil {
+				t.Fatal("the integration tests must still be generated")
+			}
+			if got := readFile(t, ".raptor.test.yaml"); got != cfg {
+				t.Errorf(".raptor.test.yaml changed:\n%s", got)
+			}
+		})
+	}
+}
+
+// Without a test config to edit, the setting is one of the edits to make by hand.
+func TestRunAsksForTheSPASettingWithoutATestConfig(t *testing.T) {
+	copyFixture(t)
+	withSPA(t, "v2.1.0")
+	var out bytes.Buffer
+	if err := run(t, Options{Name: "Course", Out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	loose(t, out.String(), "Add these by hand: - .raptor.test.yaml")
+	if !strings.Contains(out.String(), `spa_optional: "true"`) {
+		t.Errorf("output does not say what to add:\n%s", out.String())
+	}
+}
+
+// spa/v2 reads app.spa_optional only from v2.1.0; an older one needs upgrading or the generated
+// tests fail to boot without a frontend build.
+func TestRunWarnsAboutAnSPAThatIgnoresTheSetting(t *testing.T) {
+	copyFixture(t)
+	withSPA(t, "v2.0.1")
+	writeFile(t, ".raptor.test.yaml", "database:\n  name: shop_test\n")
+	var out bytes.Buffer
+	if err := run(t, Options{Name: "Course", Out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "github.com/go-raptor/controllers/spa/v2@v2.1.0") {
+		t.Errorf("output does not name the upgrade:\n%s", out.String())
 	}
 }
 

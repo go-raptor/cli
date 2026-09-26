@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The `TestMain` that `raptor g resource` generates no longer sets `SPA_OPTIONAL`, which `controllers/spa` v2.1.0 doesn't read. When the project requires `controllers/spa/v2`, the generator adds `spa_optional: "true"` under `app:` in `.raptor.test.yaml` instead, leaving a value the file already sets alone. For a spa/v2 older than v2.1.0, which ignores the setting, it says to upgrade.
+
 ## v1.3.0 — 2026-09-26
 
 ### Added
