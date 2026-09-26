@@ -166,6 +166,10 @@ func TestDecideRequirements(t *testing.T) {
 		{"partial helpers", "Course", "only some of bindJSON", func(t *testing.T) {
 			writeFile(t, "app/controllers/helpers.go", "package controllers\n\nfunc bindJSON() {}\n")
 		}},
+		// Finding I-8: the actual reason, not "already exists".
+		{"validation.go without maxChars", "Course", "app/models/validation.go exists but does not declare maxChars", func(t *testing.T) {
+			writeFile(t, "app/models/validation.go", "package models\n\nfunc other() {}\n")
+		}},
 		{"incomplete DatabaseService", "Course", "DatabaseService lacks Ctx, Conn, HandleError, HandleErrorNotFound, HandleAffected", func(t *testing.T) {
 			writeFile(t, "app/services/database_service.go", "package services\n\ntype DatabaseService struct{}\n")
 		}},
@@ -206,6 +210,16 @@ func TestDecideSkipsIntegrationTests(t *testing.T) {
 		{"unseedable ref", []string{"name:string", "kind:ref"}, func(t *testing.T) {
 			writeFile(t, "app/models/kind.go", "package models\n\nimport \"github.com/uptrace/bun\"\n\ntype KindCode string\n\ntype Kind struct {\n\tbun.BaseModel `bun:\"table:kinds,alias:kinds\"`\n\n\tID   int64    `bun:\"id,pk,autoincrement\" json:\"id\"`\n\tCode KindCode `bun:\"code,notnull\" json:\"code\"`\n}\n")
 		}, "no sample value for type KindCode", nil},
+		// Finding I-8: never a second TestMain, wherever the first one is.
+		{"TestMain without app", nil, func(t *testing.T) {
+			writeFile(t, "app/controllers/main_test.go", "package controllers_test\n\nvar testApp int\n\nfunc TestMain(m *testing.M) {}\n")
+		}, "app/controllers/main_test.go has a TestMain, but the controllers tests declare no app variable", nil},
+		{"TestMain in the internal test package", nil, func(t *testing.T) {
+			writeFile(t, "app/controllers/main_internal_test.go", "package controllers\n\nfunc TestMain(m *testing.M) {}\n")
+		}, "app/controllers/main_internal_test.go has a TestMain", nil},
+		{"setup_test.go without app", nil, func(t *testing.T) {
+			writeFile(t, "app/controllers/setup_test.go", "package controllers_test\n\nvar testApp int\n")
+		}, "app/controllers/setup_test.go already exists, but the controllers tests declare no app variable", nil},
 		// Finding I-1: the harness sets the user's fields in a composite literal, which can't
 		// reach fields promoted from an embedded struct.
 		{"user fields from a mixin", nil, func(t *testing.T) {

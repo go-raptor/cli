@@ -23,6 +23,7 @@ type decls struct {
 	TypeFiles map[string]string          // type → the file that declares it
 	Methods   map[string]map[string]bool // receiver type → method names
 	Fields    map[string]map[string]bool // struct type → field names
+	TestMain  string                     // the file with a TestMain, in either test package: a test binary takes one
 }
 
 func (d decls) has(recv, method string) bool { return d.Methods[recv][method] }
@@ -55,8 +56,15 @@ func loadDecls(dir string, tests bool) (decls, error) {
 		if err != nil {
 			return d, fmt.Errorf("parsing %s: %w", path, err)
 		}
-		if tests && !strings.HasSuffix(file.Name.Name, "_test") {
-			continue
+		if tests {
+			for _, decl := range file.Decls {
+				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == "TestMain" {
+					d.TestMain = path
+				}
+			}
+			if !strings.HasSuffix(file.Name.Name, "_test") {
+				continue
+			}
 		}
 		for _, decl := range file.Decls {
 			switch decl := decl.(type) {
@@ -96,6 +104,11 @@ func loadDecls(dir string, tests bool) (decls, error) {
 		}
 	}
 	return d, nil
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // signature writes a function type with its parameter and result types only, so two
@@ -253,6 +266,9 @@ func (p *Project) decide(res *Resource, v *view) (*decisions, error) {
 		problems = append(problems, "app/controllers defines only some of bindJSON, validationFailed and pathID")
 	}
 	d.MaxChars = v.UsesMaxChars && !p.ModelsPkg.Funcs["maxChars"]
+	if validation := filepath.Join("app", "models", "validation.go"); d.MaxChars && exists(validation) {
+		problems = append(problems, validation+" exists but does not declare maxChars, which the string fields' schemas call; add it (patterns.md in the raptor-api-conventions skill has it) or move that file aside")
+	}
 	_, err := os.Stat(filepath.Join("app", "models", "schemas_test.go"))
 	d.SchemasTest = errors.Is(err, fs.ErrNotExist)
 	d.SetupMigration = !strings.Contains(p.Migrations, "set_updated_at()")
@@ -335,7 +351,15 @@ func (p *Project) decideTests(v *view, d *decisions) string {
 		}
 		return "the controllers tests' harness does not match what the generated tests call: " + strings.Join(different, "; ")
 	}
-	d.SetupTest = !p.ControllerTests.Vars["app"]
+	if !tests.Vars["app"] { // the generated tests call app, which a new setup_test.go declares
+		if tests.TestMain != "" {
+			return tests.TestMain + " has a TestMain, but the controllers tests declare no app variable for the generated tests to call, and a second TestMain would not compile; name the *raptor.Raptor it builds app"
+		}
+		if setup := filepath.Join("app", "controllers", "setup_test.go"); exists(setup) {
+			return setup + " already exists, but the controllers tests declare no app variable for the generated tests to call"
+		}
+		d.SetupTest = true
+	}
 	seeds, err := p.seedClosure(v)
 	if err != nil {
 		return err.Error()

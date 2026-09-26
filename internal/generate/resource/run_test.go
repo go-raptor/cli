@@ -234,3 +234,24 @@ func TestRunStampsAfterTheLatestMigration(t *testing.T) {
 		t.Errorf("versions = %v; want setup at 20260925120031 and courses at 20260925120032", got)
 	}
 }
+
+// Finding I-8: a setup_test.go built around another variable skips the integration tests
+// instead of refusing the whole command.
+func TestRunSkipsTestsBesideAnotherSetup(t *testing.T) {
+	copyFixture(t)
+	setup := "package controllers_test\n\nimport \"testing\"\n\nvar testApp int\n\nfunc TestMain(m *testing.M) {}\n"
+	writeFile(t, "app/controllers/setup_test.go", setup)
+	var out bytes.Buffer
+	if err := run(t, Options{Name: "Course", Out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "No integration tests were generated: app/controllers/setup_test.go has a TestMain") {
+		t.Errorf("output:\n%s", out.String())
+	}
+	if readFile(t, "app/controllers/setup_test.go") != setup {
+		t.Error("setup_test.go must be left alone")
+	}
+	if _, err := os.Stat("app/controllers/courses_controller_test.go"); err == nil {
+		t.Error("no integration tests should be written")
+	}
+}
