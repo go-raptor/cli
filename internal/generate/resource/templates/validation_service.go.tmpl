@@ -1,0 +1,19 @@
+package services
+
+import (
+	"github.com/Oudwins/zog"
+	"github.com/go-raptor/raptor/v4"
+	"{{.Module}}/app/models"
+)
+
+// ValidationService builds every schema once, at startup, and shares it with every request.
+type ValidationService struct {
+	raptor.Service
+
+	{{.Name}}Schema *zog.StructSchema
+}
+
+func (s *ValidationService) Setup() error {
+	s.{{.Name}}Schema = models.{{.Name}}Schema()
+	return nil
+}

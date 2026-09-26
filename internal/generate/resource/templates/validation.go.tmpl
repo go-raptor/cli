@@ -1,0 +1,18 @@
+package models
+
+import (
+	"fmt"
+	"unicode/utf8"
+
+	"github.com/Oudwins/zog"
+)
+
+// maxChars limits a string by characters. zog's Max counts bytes, and č, ć, š, ž and đ take two
+// bytes each, while VARCHAR(n) and the frontend's zod .max(n) count characters. Use it as
+// zog.String().TestFunc(maxChars(150)).
+func maxChars(n int) (zog.BoolTFunc[*string], zog.TestOption) {
+	return func(s *string, _ zog.Ctx) bool {
+			return utf8.RuneCountInString(*s) <= n
+		},
+		zog.Message(fmt.Sprintf("must be at most %d characters", n))
+}

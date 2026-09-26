@@ -196,3 +196,48 @@ func TestRenderControllers(t *testing.T) {
 		loose(t, child, want)
 	}
 }
+
+func TestRenderBootstrapFiles(t *testing.T) {
+	v := mustView(t, "Seminar", []string{"name:string"}, "", false)
+	for tmpl, wants := range map[string][]string{
+		"database_service.go.tmpl": {
+			"func (s *DatabaseService) Conn() *bun.DB {",
+			"func (s *DatabaseService) HandleAffected(res sql.Result, err error, notFound string) error {",
+			"case \"23505\": // unique_violation",
+		},
+		"validation_service.go.tmpl": {
+			"\"example.com/shop/app/models\"",
+			"SeminarSchema *zog.StructSchema",
+			"s.SeminarSchema = models.SeminarSchema() return nil",
+		},
+		"helpers.go.tmpl": {
+			"func bindJSON(ctx *raptor.Context, v any) error {",
+			"func validationFailed(issues zog.ZogIssueList) error {",
+			"func pathID(ctx *raptor.Context) (int64, error) {",
+		},
+		"validation.go.tmpl": {"func maxChars(n int) (zog.BoolTFunc[*string], zog.TestOption) {"},
+		"schemas_test.go.tmpl": {
+			"package models_test",
+			"func TestSchemasMatchTheirRequests(t *testing.T) { models.SeminarSchema().Validate(&models.SeminarRequest{}) }",
+		},
+		"setup_test.go.tmpl": {
+			"\"example.com/shop/config/components\"",
+			"os.Setenv(\"SPA_OPTIONAL\", \"true\")",
+			"app = raptor.NewTestApp(components.New(), config.Routes())",
+		},
+		"harness_test.go.tmpl": {
+			"func db(t *testing.T) *bun.DB {",
+			"func mustInsert(t *testing.T, q *bun.InsertQuery) {",
+			"func newUser(t *testing.T, username string) *models.User {",
+			"t.Cleanup(func() { _, _ = db(t).NewDelete().Model((*models.User)(nil)).Where(\"id = ?\", user.ID).Exec(context.Background()) })",
+			"return raptor.WithRemoteAddr(fmt.Sprintf(\"10.%d.%d.%d\", byte(n>>16), byte(n>>8), byte(n)))",
+			"func login(t *testing.T, username string) *http.Cookie {",
+			"func withSession(c *http.Cookie) raptor.TestRequestOption {",
+		},
+	} {
+		src := mustRender(t, tmpl, v)
+		for _, want := range wants {
+			loose(t, src, want)
+		}
+	}
+}
