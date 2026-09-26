@@ -1,6 +1,9 @@
 package resource
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // loadFixtureModels indexes testdata/models, shared by the model, ownership and view tests.
 func loadFixtureModels(t *testing.T) ModelIndex {
@@ -75,6 +78,20 @@ func TestLoadModelsPromotesEmbeddedFields(t *testing.T) {
 	}
 	if got := idx["Folder"].Unresolved; len(got) != 0 {
 		t.Errorf("Folder.Unresolved = %v, want none", got)
+	}
+}
+
+// Fix round 2, I-1(a): only bun's BaseModel, under whatever name bun is imported, marks a model.
+func TestLoadModelsKnowsBunsBaseModel(t *testing.T) {
+	idx := loadFixtureModels(t)
+	if stamp := idx["Stamp"]; stamp == nil || stamp.Table != "stamps" || len(stamp.Unresolved) != 0 {
+		t.Errorf("Stamp imports bun as ub and is a model: %+v", stamp)
+	}
+	if safe := idx["Safe"]; safe == nil || safe.Table != "safes" || !safe.HasColumn("user_id") || len(safe.Unresolved) != 0 {
+		t.Errorf("Safe gains user_id from the project's own BaseModel: %+v", safe)
+	}
+	if vault := idx["Vault"]; vault == nil || !reflect.DeepEqual(vault.Unresolved, []string{"common.BaseModel"}) || vault.HasColumn("user_id") {
+		t.Errorf("Vault's common.BaseModel is not bun's, so it is unresolved: %+v", vault)
 	}
 }
 

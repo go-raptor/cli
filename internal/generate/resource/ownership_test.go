@@ -72,7 +72,7 @@ func TestOwnerChainErrors(t *testing.T) {
 // shared reference data.
 func TestCheckRefTarget(t *testing.T) {
 	idx := loadFixtureModels(t)
-	for _, name := range []string{"Division", "Tag", "User"} {
+	for _, name := range []string{"Division", "Tag", "User", "Stamp"} {
 		if err := idx.CheckRefTarget(name); err != nil {
 			t.Errorf("CheckRefTarget(%s): %v", name, err)
 		}
@@ -89,6 +89,9 @@ func TestCheckRefTarget(t *testing.T) {
 		// what the index cannot see
 		"Badge": "Badge embeds audit.Trail, which is not declared in app/models",
 		"Clip":  "Clip has a belongs-to relation to media.Source, which is not a model in app/models",
+		// Fix round 2, I-1(a): a BaseModel that isn't bun's.
+		"Vault": "Vault embeds common.BaseModel, which is not declared in app/models",
+		"Safe":  "Safe is owned by a user; use --parent Safe",
 	} {
 		err := idx.CheckRefTarget(name)
 		if err == nil || !strings.Contains(err.Error(), want) {

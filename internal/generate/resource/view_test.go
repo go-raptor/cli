@@ -151,6 +151,8 @@ func TestBuildViewErrors(t *testing.T) {
 		{"Seminar", "", []string{"track:ref"}, "field track: Track reaches Album through album_id"},
 		{"Seminar", "", []string{"badge:ref"}, "field badge: Badge embeds audit.Trail"},
 		{"Seminar", "", []string{"clip:ref"}, "field clip: Clip has a belongs-to relation to media.Source"},
+		// Fix round 2, I-1(a)
+		{"Seminar", "", []string{"vault:ref"}, "field vault: Vault embeds common.BaseModel"},
 		// --parent fails closed on an owner column it cannot follow
 		{"Seminar", "Album", nil, "Album references users through owner_id"},
 		{"Seminar", "Track", nil, "not owned by a user"},

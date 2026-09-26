@@ -73,7 +73,7 @@ func LoadModels(dir string) (ModelIndex, error) {
 	if err != nil {
 		return nil, err
 	}
-	structs := map[string]*ast.StructType{}
+	structs := map[string]structDecl{}
 	var names []string
 	fset := token.NewFileSet()
 	for _, e := range entries {
@@ -85,6 +85,7 @@ func LoadModels(dir string) (ModelIndex, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", filepath.Join(dir, name), err)
 		}
+		bun := bunImportName(file)
 		for _, decl := range file.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok || gen.Tok != token.TYPE {
@@ -93,7 +94,7 @@ func LoadModels(dir string) (ModelIndex, error) {
 			for _, spec := range gen.Specs {
 				ts := spec.(*ast.TypeSpec)
 				if st, ok := ts.Type.(*ast.StructType); ok && !ts.Assign.IsValid() {
-					structs[ts.Name.Name] = st
+					structs[ts.Name.Name] = structDecl{st, bun}
 					names = append(names, ts.Name.Name)
 				}
 			}
@@ -107,13 +108,57 @@ func LoadModels(dir string) (ModelIndex, error) {
 	return idx, nil
 }
 
-// modelFromStruct indexes the named struct if it embeds bun.BaseModel, with the fields of its
-// embedded structs promoted the way Bun promotes them.
-func modelFromStruct(name string, structs map[string]*ast.StructType) *Model {
+// structDecl is a struct type of the models package, with the name its file imports bun under.
+type structDecl struct {
+	st  *ast.StructType
+	bun string // "" when the file doesn't import github.com/uptrace/bun
+}
+
+func bunImportName(file *ast.File) string {
+	for _, imp := range file.Imports {
+		if path, err := strconv.Unquote(imp.Path.Value); err == nil && path == "github.com/uptrace/bun" {
+			if imp.Name != nil {
+				return imp.Name.Name
+			}
+			return "bun"
+		}
+	}
+	return ""
+}
+
+// isBunBaseModel reports whether typ is bun.BaseModel, under the name sd's file imports bun as.
+func (sd structDecl) isBunBaseModel(typ ast.Expr) bool {
+	sel, ok := typ.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "BaseModel" {
+		return false
+	}
+	x, ok := sel.X.(*ast.Ident)
+	return ok && sd.bun != "" && x.Name == sd.bun
+}
+
+// baseName is a type's name without its package or pointer: *common.BaseModel → BaseModel.
+func baseName(typ ast.Expr) string {
+	if star, ok := typ.(*ast.StarExpr); ok {
+		typ = star.X
+	}
+	switch t := typ.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.SelectorExpr:
+		return t.Sel.Name
+	}
+	return ""
+}
+
+// modelFromStruct indexes the named struct if it embeds a BaseModel, with the fields of its
+// embedded structs promoted the way Bun promotes them. Only bun.BaseModel is the marker Bun
+// reads; any other BaseModel is an ordinary embed: expanded when the models package declares
+// it, recorded as unresolved otherwise.
+func modelFromStruct(name string, structs map[string]structDecl) *Model {
 	m := &Model{Name: name, BelongsTo: map[string]string{}}
 	isModel := false
-	for _, f := range structs[name].Fields.List {
-		if sel, ok := f.Type.(*ast.SelectorExpr); ok && len(f.Names) == 0 && sel.Sel.Name == "BaseModel" {
+	for _, f := range structs[name].st.Fields.List {
+		if len(f.Names) == 0 && baseName(f.Type) == "BaseModel" {
 			isModel = true
 			for _, part := range strings.Split(bunTag(f.Tag), ",") {
 				if table, ok := strings.CutPrefix(part, "table:"); ok {
@@ -153,8 +198,8 @@ func (e embedding) enter(field, typ, prefix string, pointer bool) embedding {
 	return next
 }
 
-func (m *Model) addFields(st *ast.StructType, structs map[string]*ast.StructType, at embedding) {
-	for _, f := range st.Fields.List {
+func (m *Model) addFields(sd structDecl, structs map[string]structDecl, at embedding) {
+	for _, f := range sd.st.Fields.List {
 		tag := bunTag(f.Tag)
 		if tag == "-" {
 			continue
@@ -165,11 +210,11 @@ func (m *Model) addFields(st *ast.StructType, structs map[string]*ast.StructType
 			if star, ok := typ.(*ast.StarExpr); ok {
 				typ, pointer = star.X, true
 			}
-			if sel, ok := typ.(*ast.SelectorExpr); ok && sel.Sel.Name == "BaseModel" && len(f.Names) == 0 {
+			if len(f.Names) == 0 && sd.isBunBaseModel(typ) {
 				continue // the model marker, or a nested one Bun ignores
 			}
 			ident, ok := typ.(*ast.Ident)
-			if !ok || structs[ident.Name] == nil || at.within[ident.Name] {
+			if !ok || structs[ident.Name].st == nil || at.within[ident.Name] {
 				m.Unresolved = append(m.Unresolved, types.ExprString(f.Type))
 				continue
 			}
