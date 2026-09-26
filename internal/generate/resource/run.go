@@ -91,9 +91,19 @@ func Plan(res *Resource, p *Project, now time.Time) (*Generation, error) {
 	} else {
 		g.Notes = append(g.Notes, "No integration tests were generated: "+d.Skip+".")
 	}
-	stamp := now.UTC()
+	// The table migration is stamped now, and the setup migration a second earlier, so Goose
+	// applies it first. Both go after the newest existing version, so runs chained within one
+	// second never share one.
+	stamp := now.UTC().Truncate(time.Second)
 	if d.SetupMigration {
-		g.Files = append(g.Files, File{filepath.Join("db", "migrations", stamp.Add(-time.Second).Format(migrationStamp)+"_setup.sql"), setupMigration})
+		stamp = stamp.Add(-time.Second)
+	}
+	if next := p.LatestMigration.Add(time.Second); stamp.Before(next) {
+		stamp = next
+	}
+	if d.SetupMigration {
+		g.Files = append(g.Files, File{filepath.Join("db", "migrations", stamp.Format(migrationStamp)+"_setup.sql"), setupMigration})
+		stamp = stamp.Add(time.Second)
 	}
 	g.Files = append(g.Files, File{filepath.Join("db", "migrations", stamp.Format(migrationStamp)+"_create_"+v.Table+".sql"), renderMigration(v)})
 	written := map[string]bool{}

@@ -184,3 +184,53 @@ func TestRunNamesTheModelFileSoItCompiles(t *testing.T) {
 		}
 	}
 }
+
+// migrationVersions maps each migration's name (after the version) to its version.
+func migrationVersions(t *testing.T) map[string]string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join("db", "migrations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions, seen := map[string]string{}, map[string]string{}
+	for _, e := range entries {
+		version, name, _ := strings.Cut(e.Name(), "_")
+		if other, dup := seen[version]; dup {
+			t.Errorf("version %s is used by both %s and %s", version, other, e.Name())
+		}
+		seen[version], versions[name] = e.Name(), version
+	}
+	return versions
+}
+
+// Finding I-4: runs chained within one second must not reuse a Goose version.
+func TestRunKeepsMigrationVersionsUnique(t *testing.T) {
+	copyFixture(t)
+	for _, o := range []Options{{Name: "Course"}, {Name: "Outcome", Parent: "Course"}, {Name: "Unit", Parent: "Outcome"}} {
+		if err := run(t, o); err != nil { // the same Now each time
+			t.Fatal(err)
+		}
+	}
+	got := migrationVersions(t)
+	want := map[string]string{
+		"create_users.sql": "20260101000000", "setup.sql": "20260925115959",
+		"create_courses.sql": "20260925120000", "create_outcomes.sql": "20260925120001", "create_units.sql": "20260925120002",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("versions = %v, want %v", got, want)
+	}
+}
+
+// Finding I-4: with a migration newer than now, the setup and table migrations both go after it,
+// the setup one first.
+func TestRunStampsAfterTheLatestMigration(t *testing.T) {
+	copyFixture(t)
+	writeFile(t, "db/migrations/20260925120030_create_things.sql", "-- +goose Up\nSELECT 1;\n")
+	if err := run(t, Options{Name: "Course"}); err != nil {
+		t.Fatal(err)
+	}
+	got := migrationVersions(t)
+	if got["setup.sql"] != "20260925120031" || got["create_courses.sql"] != "20260925120032" {
+		t.Errorf("versions = %v; want setup at 20260925120031 and courses at 20260925120032", got)
+	}
+}

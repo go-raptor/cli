@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // decls are one package's top-level declarations, as far as the preconditions need them.
@@ -99,8 +100,9 @@ func loadDecls(dir string, tests bool) (decls, error) {
 type Project struct {
 	Module          string
 	GoMod           string
-	Routes          string // config/routes.yaml; "" when missing
-	Migrations      string // every migration file, lowercased
+	Routes          string    // config/routes.yaml; "" when missing
+	Migrations      string    // every migration file, lowercased
+	LatestMigration time.Time // the newest timestamp version in db/migrations; zero without one
 	Models          ModelIndex
 	ModelsPkg       decls
 	Services        decls
@@ -125,6 +127,10 @@ func Inspect(module string) (*Project, error) {
 			if content, err := os.ReadFile(filepath.Join("db", "migrations", e.Name())); err == nil && !e.IsDir() {
 				b.WriteString(strings.ToLower(string(content)))
 				b.WriteString("\n")
+			}
+			version, _, _ := strings.Cut(e.Name(), "_")
+			if at, err := time.ParseInLocation(migrationStamp, version, time.UTC); err == nil && at.After(p.LatestMigration) {
+				p.LatestMigration = at
 			}
 		}
 		p.Migrations = b.String()
