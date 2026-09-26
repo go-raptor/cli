@@ -30,13 +30,15 @@ raptor g resource Unit title:string:80 type:enum:lecture,lab starts_at:time:opti
 
 | Field spec | Column | Notes |
 | --- | --- | --- |
-| `name:string`, `code:string:12` | `VARCHAR(n)`, 150 by default | Required and trimmed; `:optional` stores `""` as NULL |
-| `notes:text` | `TEXT NOT NULL DEFAULT ''` | Prose; always optional |
-| `count:int`, `size:int64` | `INTEGER` / `BIGINT` with `CHECK (>= 0)` | 0 is valid |
+| `name:string`, `code:string:12` | `VARCHAR(n) NOT NULL`, 150 by default | Required and trimmed |
+| `notes:text` | `TEXT NOT NULL DEFAULT ''` | Prose; always optional, so it takes no `:optional` |
+| `count:int`, `size:int64` | `INTEGER` / `BIGINT NOT NULL DEFAULT 0` with `CHECK (>= 0)` | 0 is valid |
 | `active:bool` | `BOOLEAN NOT NULL DEFAULT false` | |
-| `starts_at:time` | `TIMESTAMPTZ` | |
-| `type:enum:lecture,lab` | a Postgres enum | A typed Go string with constants and an allow-list |
-| `division:ref`, `mentor:ref:User` | `division_id BIGINT` + FK `RESTRICT` | Shared reference data only; for a user's own rows use `--parent` |
+| `starts_at:time` | `TIMESTAMPTZ NOT NULL` | |
+| `type:enum:lecture,lab` | a Postgres enum, `NOT NULL` | A typed Go string with constants and an allow-list |
+| `division:ref`, `mentor:ref:User` | `division_id BIGINT NOT NULL` + FK `RESTRICT` | Shared reference data only; for a user's own rows use `--parent` |
+
+Append `:optional` to any type but `text` (`starts_at:time:optional`) for a nullable column and an optional request field; an optional string stores `""` as NULL.
 
 - A resource is owned by the user (`user_id`). `--parent Model` makes it a child at any depth: the generator follows the models' foreign keys up to `user_id` and writes the ownership checks. `--movable` lets an update move a child to another parent.
 - It needs the Bun Postgres connector (`raptor db init postgres --bun`) and the session auth stack (`models.User`, `AuthService.CurrentUser`). On first use it creates `DatabaseService`, `ValidationService`, the controller helpers and the test harness.
