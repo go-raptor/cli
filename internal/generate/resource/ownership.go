@@ -2,6 +2,8 @@ package resource
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -89,6 +91,9 @@ func (idx ModelIndex) OwnerChain(name string) (Chain, error) {
 		parents := idx.ownedParents(m, map[string]bool{m.Name: true})
 		switch len(parents) {
 		case 0:
+			if col := idx.usersColumn(m); col != "" {
+				return Chain{}, fmt.Errorf("model %s is not owned by a user the generator can follow: %s references users through %s, but the ownership chain needs a user_id column", m.Name, m.Name, col)
+			}
 			return Chain{}, fmt.Errorf("model %s is not owned by a user: it has no user_id column and no foreign key to an owned model", m.Name)
 		case 1:
 		default:
@@ -101,4 +106,91 @@ func (idx ModelIndex) OwnerChain(name string) (Chain, error) {
 		c.FKs = append(c.FKs, parents[0].column)
 		m = parents[0].target
 	}
+}
+
+// isUsers reports whether m is the users table itself.
+func isUsers(m *Model) bool { return m.Name == "User" || m.Table == "users" }
+
+// usersColumn returns a column of m that references users (user_id, or any column a
+// belongs-to relation or its name points at the users table), or "".
+func (idx ModelIndex) usersColumn(m *Model) string {
+	if isUsers(m) {
+		return ""
+	}
+	if m.HasColumn("user_id") {
+		return "user_id"
+	}
+	for _, f := range m.Fields {
+		if target, ok := idx.FKTarget(m, f.Column); ok && isUsers(target) {
+			return f.Column
+		}
+	}
+	for _, col := range slices.Sorted(maps.Keys(m.BelongsTo)) {
+		if target, ok := idx[m.BelongsTo[col]]; m.BelongsTo[col] == "User" || ok && isUsers(target) {
+			return col
+		}
+	}
+	return ""
+}
+
+// CheckRefTarget refuses a ref target unless it is provably shared reference data. A ref gets no
+// ownership check, so the gate fails closed. It refuses a model that is owned, one with a column
+// that references users under any name, one that reaches such a model through its foreign keys,
+// and one with an embedded struct or a belongs-to relation the index cannot read. The users
+// table itself stays allowed (ref:User).
+func (idx ModelIndex) CheckRefTarget(name string) error {
+	target, ok := idx[name]
+	if !ok {
+		return fmt.Errorf("model %s not found in app/models", name)
+	}
+	if isUsers(target) {
+		return nil
+	}
+	if idx.IsOwned(name) {
+		if _, err := idx.OwnerChain(name); err == nil {
+			return fmt.Errorf("%s is owned by a user; use --parent %s, or the ownership check would be skipped", name, name)
+		}
+		return fmt.Errorf("%s is owned by a user, and a ref would skip the ownership check", name)
+	}
+	type step struct {
+		m   *Model
+		via []string // the foreign keys followed from the target
+	}
+	queue, seen := []step{{target, nil}}, map[string]bool{name: true}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		m, reason := cur.m, ""
+		if col := idx.usersColumn(m); col != "" {
+			reason = fmt.Sprintf("%s references users through %s", m.Name, col)
+		} else if len(m.Unresolved) > 0 {
+			reason = fmt.Sprintf("%s embeds %s, which is not declared in app/models, so its columns are unknown", m.Name, strings.Join(m.Unresolved, ", "))
+		} else {
+			for _, col := range slices.Sorted(maps.Keys(m.BelongsTo)) {
+				if _, ok := idx[m.BelongsTo[col]]; !ok {
+					reason = fmt.Sprintf("%s has a belongs-to relation to %s, which is not a model in app/models", m.Name, m.BelongsTo[col])
+					break
+				}
+			}
+		}
+		if reason != "" {
+			if len(cur.via) > 0 {
+				reason = fmt.Sprintf("%s reaches %s through %s, and %s", name, m.Name, strings.Join(cur.via, " → "), reason)
+			}
+			return fmt.Errorf("%s; a ref gets no ownership check, so it only takes shared reference data", reason)
+		}
+		for _, f := range m.Fields {
+			if next, ok := idx.FKTarget(m, f.Column); ok && !seen[next.Name] {
+				seen[next.Name] = true
+				queue = append(queue, step{next, append(slices.Clone(cur.via), f.Column)})
+			}
+		}
+		for _, col := range slices.Sorted(maps.Keys(m.BelongsTo)) {
+			if next, ok := idx[m.BelongsTo[col]]; ok && !seen[next.Name] {
+				seen[next.Name] = true
+				queue = append(queue, step{next, append(slices.Clone(cur.via), col)})
+			}
+		}
+	}
+	return nil
 }

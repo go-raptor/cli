@@ -24,6 +24,9 @@ func seed{{.Name}}(t *testing.T{{if .Owned}}, userID int64{{end}}) *models.{{.Na
 		{{.GoName}}: {{.Expr}},
 {{- end}}
 	}
+{{- range .Promoted}}
+	{{$.Var}}.{{.GoName}} = {{.Expr}}
+{{- end}}
 	mustInsert(t, db(t).NewInsert().Model({{.Var}}).Returning("*"))
 	t.Cleanup(func() {
 		_, _ = db(t).NewDelete().Model((*models.{{.Name}})(nil)).Where("id = ?", {{.Var}}.ID).Exec(context.Background())

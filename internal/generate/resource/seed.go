@@ -14,6 +14,7 @@ type seedModelView struct {
 	Name, Var  string
 	Owned      bool // the seed takes userID
 	Fields     []seedFieldView
+	Promoted   []seedFieldView
 	UsesTime   bool
 	UsesSuffix bool
 }
@@ -27,43 +28,58 @@ var numericTypes = map[string]bool{
 }
 
 // buildSeedModel picks a sample value for every column: userID for the owner, another seed for a
-// foreign key, and a literal by Go type otherwise. Pointer fields stay nil. A type it has no
-// sample for is an error, which skips the integration tests rather than guessing.
+// foreign key, and a literal by Go type otherwise. Pointer fields stay nil. A field promoted from
+// an embedded struct can't go in the composite literal, so the seed assigns it afterwards. A type
+// it has no sample for, or a field behind an embedded pointer, is an error, which skips the
+// integration tests rather than guessing.
 func buildSeedModel(idx ModelIndex, m *Model, module string) (*seedModelView, error) {
 	s := &seedModelView{Module: module, Name: m.Name, Var: naming.Var(m.Name), Owned: idx.IsOwned(m.Name)}
 	for _, f := range m.Fields {
-		switch f.Column {
-		case "", "id", "created_at", "updated_at":
-			continue
-		case "user_id":
-			s.Fields = append(s.Fields, seedFieldView{f.GoName, "userID"})
-			continue
-		}
-		if strings.HasPrefix(f.GoType, "*") {
-			continue
-		}
-		if target, ok := idx.FKTarget(m, f.Column); ok {
-			expr := "seed" + target.Name + "(t).ID"
-			if idx.IsOwned(target.Name) {
-				expr = "seed" + target.Name + "(t, userID).ID"
-			}
-			s.Fields = append(s.Fields, seedFieldView{f.GoName, expr})
-			continue
+		expr, err := seedExpr(idx, m, f, s)
+		if err != nil {
+			return nil, err
 		}
 		switch {
-		case f.GoType == "string":
-			s.Fields = append(s.Fields, seedFieldView{f.GoName, fmt.Sprintf("%q + suffix", f.GoName+" ")})
-			s.UsesSuffix = true
-		case numericTypes[f.GoType]:
-			s.Fields = append(s.Fields, seedFieldView{f.GoName, "1"})
-		case f.GoType == "bool":
-			s.Fields = append(s.Fields, seedFieldView{f.GoName, "true"})
-		case f.GoType == "time.Time":
-			s.Fields = append(s.Fields, seedFieldView{f.GoName, "time.Now()"})
-			s.UsesTime = true
+		case expr == "":
+		case f.ViaPointer != "":
+			return nil, fmt.Errorf("cannot seed %s.%s: it comes from the embedded pointer %s, which the seed would have to allocate", m.Name, f.GoName, f.ViaPointer)
+		case f.Embed != "":
+			s.Promoted = append(s.Promoted, seedFieldView{f.Embed + "." + f.GoName, expr})
 		default:
-			return nil, fmt.Errorf("cannot seed %s.%s: the generator has no sample value for type %s", m.Name, f.GoName, f.GoType)
+			s.Fields = append(s.Fields, seedFieldView{f.GoName, expr})
 		}
 	}
 	return s, nil
+}
+
+// seedExpr is the sample value for one field, or "" to leave it at its zero value.
+func seedExpr(idx ModelIndex, m *Model, f ModelField, s *seedModelView) (string, error) {
+	switch f.Column {
+	case "", "id", "created_at", "updated_at":
+		return "", nil
+	case "user_id":
+		return "userID", nil
+	}
+	if strings.HasPrefix(f.GoType, "*") {
+		return "", nil
+	}
+	if target, ok := idx.FKTarget(m, f.Column); ok {
+		if idx.IsOwned(target.Name) {
+			return "seed" + target.Name + "(t, userID).ID", nil
+		}
+		return "seed" + target.Name + "(t).ID", nil
+	}
+	switch {
+	case f.GoType == "string":
+		s.UsesSuffix = true
+		return fmt.Sprintf("%q + suffix", f.GoName+" "), nil
+	case numericTypes[f.GoType]:
+		return "1", nil
+	case f.GoType == "bool":
+		return "true", nil
+	case f.GoType == "time.Time":
+		s.UsesTime = true
+		return "time.Now()", nil
+	}
+	return "", fmt.Errorf("cannot seed %s.%s: the generator has no sample value for type %s", m.Name, f.GoName, f.GoType)
 }

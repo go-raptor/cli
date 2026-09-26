@@ -41,5 +41,6 @@ raptor g resource Unit title:string:80 type:enum:lecture,lab starts_at:time:opti
 Append `:optional` to any type but `text` (`starts_at:time:optional`) for a nullable column and an optional request field; an optional string stores `""` as NULL.
 
 - A resource is owned by the user (`user_id`). `--parent Model` makes it a child at any depth: the generator follows the models' foreign keys up to `user_id` and writes the ownership checks. `--movable` lets an update move a child to another parent.
+- A `ref` gets no ownership check, so its target must be shared reference data. The command refuses a target that is owned, that references users under any column name (`owner_id`), that reaches such a model through its foreign keys, or whose columns it can't read (a struct embedded from another package).
 - It needs the Bun Postgres connector (`raptor db init postgres --bun`) and the session auth stack (`models.User`, `AuthService.CurrentUser`). On first use it creates `DatabaseService`, `ValidationService`, the controller helpers and the test harness.
 - It never overwrites a file. An edit it can't make safely (a registration, `routes.yaml`) is printed for you to add by hand.

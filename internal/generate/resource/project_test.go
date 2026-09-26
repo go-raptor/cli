@@ -187,14 +187,20 @@ func TestDecideSkipsIntegrationTests(t *testing.T) {
 		name  string
 		specs []string
 		setup func(t *testing.T)
+		want  string // in the reason; "" accepts any
 	}{
 		{"partial harness", nil, func(t *testing.T) {
 			writeFile(t, "app/controllers/harness_test.go", "package controllers_test\n\nfunc login() {}\n")
-		}},
-		{"no login route", nil, func(t *testing.T) { replaceInFile(t, "config/routes.yaml", "Auth.Login", "Auth.SignIn") }},
+		}, ""},
+		{"no login route", nil, func(t *testing.T) { replaceInFile(t, "config/routes.yaml", "Auth.Login", "Auth.SignIn") }, "Auth.Login"},
 		{"unseedable ref", []string{"name:string", "kind:ref"}, func(t *testing.T) {
 			writeFile(t, "app/models/kind.go", "package models\n\nimport \"github.com/uptrace/bun\"\n\ntype KindCode string\n\ntype Kind struct {\n\tbun.BaseModel `bun:\"table:kinds,alias:kinds\"`\n\n\tID   int64    `bun:\"id,pk,autoincrement\" json:\"id\"`\n\tCode KindCode `bun:\"code,notnull\" json:\"code\"`\n}\n")
-		}},
+		}, "no sample value for type KindCode"},
+		// Finding I-1: the harness sets the user's fields in a composite literal, which can't
+		// reach fields promoted from an embedded struct.
+		{"user fields from a mixin", nil, func(t *testing.T) {
+			writeFile(t, "app/models/user.go", userWithCredentials)
+		}, "models.User's Username comes from the embedded Credentials"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,9 +210,27 @@ func TestDecideSkipsIntegrationTests(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if d.Tests || d.Skip == "" {
-				t.Fatalf("integration tests should be skipped with a reason: %+v", d)
+			if d.Tests || d.Skip == "" || !strings.Contains(d.Skip, tt.want) {
+				t.Fatalf("integration tests should be skipped with a reason mentioning %q: %+v", tt.want, d)
 			}
 		})
 	}
 }
+
+const userWithCredentials = `package models
+
+import "github.com/uptrace/bun"
+
+type Credentials struct {
+	Username string ` + "`" + `bun:"username,notnull,unique" json:"username"` + "`" + `
+	Password string ` + "`" + `bun:"password,notnull" json:"-"` + "`" + `
+	Email    string ` + "`" + `bun:"email,notnull,unique" json:"email"` + "`" + `
+}
+
+type User struct {
+	bun.BaseModel ` + "`" + `bun:"table:users,alias:users"` + "`" + `
+
+	ID int64 ` + "`" + `bun:"id,pk,autoincrement" json:"id"` + "`" + `
+	Credentials
+}
+`

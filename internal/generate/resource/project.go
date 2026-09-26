@@ -241,8 +241,12 @@ func (p *Project) decideTests(v *view, d *decisions) string {
 	case len(harnessHelpers):
 	case 0:
 		for _, f := range []string{"Username", "Password", "Email"} {
-			if _, ok := p.Models["User"].Field(f); !ok {
+			field, ok := p.Models["User"].Field(f)
+			if !ok {
 				return "models.User has no " + f + " field for the generated test harness"
+			}
+			if field.Embed != "" { // the harness sets it in a composite literal
+				return fmt.Sprintf("models.User's %s comes from the embedded %s, which the generated harness's composite literal cannot set", f, field.Embed)
 			}
 		}
 		if p.ControllerTests.Vars["testPassword"] || p.ControllerTests.Vars["clientIPs"] || p.ControllerTests.Funcs["newClient"] {

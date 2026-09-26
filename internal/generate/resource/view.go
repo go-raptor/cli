@@ -219,8 +219,8 @@ func (v *view) field(f Field, idx ModelIndex) (fieldView, error) {
 		if !ok {
 			return fieldView{}, fmt.Errorf("field %s: model %s not found in app/models", f.Name, f.RefModel)
 		}
-		if idx.IsOwned(target.Name) {
-			return fieldView{}, fmt.Errorf("field %s: %s is owned by a user; use --parent %s, or the ownership check would be skipped", f.Name, target.Name, target.Name)
+		if err := idx.CheckRefTarget(target.Name); err != nil {
+			return fieldView{}, fmt.Errorf("field %s: %w", f.Name, err)
 		}
 		v.Refs = append(v.Refs, refView{Relation: naming.GoField(f.Name), Model: target.Name, Column: col, Table: target.Table, Optional: f.Optional})
 		if required {

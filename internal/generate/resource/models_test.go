@@ -44,6 +44,40 @@ func TestLoadModels(t *testing.T) {
 	}
 }
 
+// Finding I-1: fields of structs embedded from app/models belong to the embedding model's table.
+func TestLoadModelsPromotesEmbeddedFields(t *testing.T) {
+	idx := loadFixtureModels(t)
+
+	folder := idx["Folder"]
+	if folder == nil || !folder.HasColumn("user_id") || !folder.HasColumn("name") || folder.BelongsTo["user_id"] != "User" {
+		t.Fatalf("Folder must gain Owned's user_id and its relation: %+v", folder)
+	}
+	if f, ok := folder.Field("UserID"); !ok || f.Embed != "Owned" || f.ViaPointer != "" {
+		t.Errorf("Field(UserID) = %+v, %v; want a field promoted from Owned", f, ok)
+	}
+	if f, _ := folder.Field("Name"); f.Embed != "" {
+		t.Error("Folder's own Name is not promoted")
+	}
+
+	shelf := idx["Shelf"]
+	if shelf == nil || !shelf.HasColumn("user_id") || !shelf.HasColumn("created_at") {
+		t.Fatalf("Shelf must gain the nested mixins' columns through the pointer embed: %+v", shelf)
+	}
+	if f, _ := shelf.Field("UserID"); f.Embed != "OwnedStamped.Owned" || f.ViaPointer != "*OwnedStamped" {
+		t.Errorf("Shelf.UserID = %+v; want promoted through a pointer", f)
+	}
+
+	if _, ok := idx["Owned"]; ok {
+		t.Error("a mixin without bun.BaseModel is not a model")
+	}
+	if got := idx["Badge"].Unresolved; len(got) != 1 || got[0] != "audit.Trail" {
+		t.Errorf("Badge.Unresolved = %v, want [audit.Trail]", got)
+	}
+	if got := idx["Folder"].Unresolved; len(got) != 0 {
+		t.Errorf("Folder.Unresolved = %v, want none", got)
+	}
+}
+
 func TestLoadModelsWithoutADirectory(t *testing.T) {
 	idx, err := LoadModels("testdata/nope")
 	if err != nil || len(idx) != 0 {

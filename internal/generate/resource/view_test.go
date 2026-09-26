@@ -94,6 +94,21 @@ func TestBuildViewMovableEnumOptional(t *testing.T) {
 	}
 }
 
+// Finding I-1: a parent owned through an embedded mixin chains to its own user_id.
+func TestBuildViewUnderAMixinParent(t *testing.T) {
+	v := mustView(t, "Page", nil, "Folder", false)
+	if v.Predicate != "pages.folder_id IN (SELECT id FROM folders WHERE user_id = ?)" {
+		t.Errorf("Predicate = %s", v.Predicate)
+	}
+	v = mustView(t, "Page", nil, "Doc", false)
+	if !strings.Contains(v.Predicate, "WHERE folders.user_id = ?") {
+		t.Errorf("Predicate = %s", v.Predicate)
+	}
+	if v := mustView(t, "Seminar", []string{"mentor:ref:User"}, "", false); len(v.Refs) != 1 {
+		t.Error("ref:User stays allowed")
+	}
+}
+
 func TestBuildViewErrors(t *testing.T) {
 	idx := loadFixtureModels(t)
 	tests := []struct {
@@ -104,6 +119,16 @@ func TestBuildViewErrors(t *testing.T) {
 		{"Seminar", "", []string{"course:ref"}, "Course is owned by a user; use --parent Course"},
 		{"Seminar", "", []string{"thing:ref"}, "model Thing not found"},
 		{"Seminar", "Division", nil, "not owned by a user"},
+		// Finding I-1: the ref gate fails closed.
+		{"Seminar", "", []string{"folder:ref"}, "field folder: Folder is owned by a user; use --parent Folder"},
+		{"Seminar", "", []string{"doc:ref"}, "field doc: Doc is owned by a user; use --parent Doc"},
+		{"Seminar", "", []string{"album:ref"}, "field album: Album references users through owner_id"},
+		{"Seminar", "", []string{"track:ref"}, "field track: Track reaches Album through album_id"},
+		{"Seminar", "", []string{"badge:ref"}, "field badge: Badge embeds audit.Trail"},
+		{"Seminar", "", []string{"clip:ref"}, "field clip: Clip has a belongs-to relation to media.Source"},
+		// --parent fails closed on an owner column it cannot follow
+		{"Seminar", "Album", nil, "Album references users through owner_id"},
+		{"Seminar", "Track", nil, "not owned by a user"},
 	}
 	for _, tt := range tests {
 		res, err := NewResource(tt.name, tt.specs, tt.parent, "", false)
