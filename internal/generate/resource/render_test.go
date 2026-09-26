@@ -128,3 +128,71 @@ func TestRenderMigrationEnumChild(t *testing.T) {
 		loose(t, sql, want)
 	}
 }
+
+func TestRenderServiceFlat(t *testing.T) {
+	src := mustRender(t, "service.go.tmpl", mustView(t, "Seminar", []string{"name:string"}, "", false))
+	for _, want := range []string{
+		"type SeminarsService struct { raptor.Service DB *DatabaseService }",
+		"Where(\"seminars.user_id = ?\", userID).",
+		"Order(\"seminars.name\", \"seminars.id\").",
+		"Where(\"seminars.id = ? AND seminars.user_id = ?\", id, userID).",
+		"return seminar, s.DB.HandleErrorNotFound(err, \"Seminar not found\")",
+		"func (s *SeminarsService) Create(seminar *models.Seminar) error {",
+		"Column(models.SeminarUpdatableColumns...).",
+		"Where(\"id = ? AND user_id = ?\", seminar.ID, userID).",
+		"func (s *SeminarsService) VerifyOwnership(seminarID, userID int64) error {",
+	} {
+		loose(t, src, want)
+	}
+}
+
+func TestRenderServiceChild(t *testing.T) {
+	src := mustRender(t, "service.go.tmpl", mustView(t, "Topic", []string{"name:string"}, "Course", false))
+	for _, want := range []string{
+		"Courses *CoursesService // the immediate parent, injected by type like DB",
+		"const topicsOwnedByUser = `topics.course_id IN (SELECT id FROM courses WHERE user_id = ?)`",
+		"Order(\"topics.course_id\", \"topics.name\", \"topics.id\").",
+		"func (s *TopicsService) ListByCourse(courseID, userID int64) (models.Topics, error) {",
+		"Where(\"topics.course_id = ?\", courseID).",
+		"func (s *TopicsService) Create(topic *models.Topic, userID int64) error { if err := s.Courses.VerifyOwnership(topic.CourseID, userID); err != nil {",
+		"Where(\"topics.id = ?\", topic.ID). Where(topicsOwnedByUser, userID).",
+	} {
+		loose(t, src, want)
+	}
+	if n := strings.Count(src, "VerifyOwnership(topic.CourseID"); n != 1 {
+		t.Errorf("an immutable parent is verified on create only; found %d checks", n)
+	}
+
+	movable := mustRender(t, "service.go.tmpl", mustView(t, "Slot", []string{"name:string"}, "Outcome", true))
+	if n := strings.Count(movable, "VerifyOwnership(slot.OutcomeID"); n != 2 {
+		t.Errorf("a movable child verifies the destination on update as well; found %d checks", n)
+	}
+	loose(t, movable, "const slotsOwnedByUser = `slots.outcome_id IN ( SELECT outcomes.id FROM outcomes JOIN courses ON courses.id = outcomes.course_id WHERE courses.user_id = ? )`")
+}
+
+func TestRenderControllers(t *testing.T) {
+	flat := mustRender(t, "controller.go.tmpl", mustView(t, "Seminar", []string{"name:string"}, "", false))
+	for _, want := range []string{
+		"type SeminarsController struct { raptor.Controller Auth *services.AuthService Seminars *services.SeminarsService Validation *services.ValidationService }",
+		"seminars, err := c.Seminars.List(user.ID)",
+		"if issues := c.Validation.SeminarSchema.Validate(&req); len(issues) > 0 {",
+		"seminar := req.ToModel(user.ID)",
+		"if err := c.Seminars.Create(seminar); err != nil {",
+		"return ctx.Data(models.NewSeminarResponse(seminar), http.StatusCreated)",
+		"seminar := &models.Seminar{ID: id} // identity from the path, state from the body",
+		"return ctx.NoContent()",
+	} {
+		loose(t, flat, want)
+	}
+
+	child := mustRender(t, "controller.go.tmpl", mustView(t, "Topic", []string{"name:string"}, "Course", false))
+	for _, want := range []string{
+		"if raw := ctx.QueryParam(\"courseId\"); raw == \"\" {",
+		"return errs.NewErrorBadRequest(\"Invalid courseId\")",
+		"topics, err = c.Topics.ListByCourse(courseID, user.ID)",
+		"topic := req.ToModel()",
+		"if err := c.Topics.Create(topic, user.ID); err != nil {",
+	} {
+		loose(t, child, want)
+	}
+}

@@ -1,0 +1,175 @@
+package services
+
+import (
+	"github.com/go-raptor/raptor/v4"
+	"github.com/go-raptor/raptor/v4/errs"
+	"{{.Module}}/app/models"
+)
+
+type {{.Plural}}Service struct {
+	raptor.Service
+
+	DB *DatabaseService
+{{- if .Parent}}
+	{{.Parent.Plural}} *{{.Parent.Plural}}Service // the immediate parent, injected by type like DB
+{{- end}}
+}
+{{if .Parent}}
+// {{.PredicateConst}} scopes a {{.LabelLower}} to its owner through its parent. Get, Update,
+// Delete and VerifyOwnership share it, so the ownership rule is written once.
+const {{.PredicateConst}} = `{{.Predicate}}`
+
+// List is every {{.LabelLower}} the user owns: the unfiltered index.
+func (s *{{.Plural}}Service) List(userID int64) (models.{{.Plural}}, error) {
+	var {{.PluralVar}} models.{{.Plural}}
+	err := s.DB.Conn().NewSelect().
+		Model(&{{.PluralVar}}).
+		Where({{.PredicateConst}}, userID).
+		Order({{.ChildOrder}}).
+		Scan(s.DB.Ctx)
+	return {{.PluralVar}}, s.DB.HandleError(err)
+}
+
+// ListBy{{.Parent.Name}} verifies the parent first: filtering alone could not tell "not your
+// {{.Parent.LabelLower}}" from "a {{.Parent.LabelLower}} with no {{.PluralLabelLower}}", which are both zero rows.
+func (s *{{.Plural}}Service) ListBy{{.Parent.Name}}({{.Parent.Var}}ID, userID int64) (models.{{.Plural}}, error) {
+	if err := s.{{.Parent.Plural}}.VerifyOwnership({{.Parent.Var}}ID, userID); err != nil {
+		return nil, err
+	}
+	var {{.PluralVar}} models.{{.Plural}}
+	err := s.DB.Conn().NewSelect().
+		Model(&{{.PluralVar}}).
+		Where("{{.Table}}.{{.Parent.Column}} = ?", {{.Parent.Var}}ID).
+		Order({{.OrderBy}}).
+		Scan(s.DB.Ctx)
+	return {{.PluralVar}}, s.DB.HandleError(err)
+}
+
+func (s *{{.Plural}}Service) Get(id, userID int64) (*models.{{.Name}}, error) {
+	{{.Var}} := new(models.{{.Name}})
+	err := s.DB.Conn().NewSelect().
+		Model({{.Var}}).
+		Where("{{.Table}}.id = ?", id).
+		Where({{.PredicateConst}}, userID).
+		Scan(s.DB.Ctx)
+	return {{.Var}}, s.DB.HandleErrorNotFound(err, "{{.Label}} not found")
+}
+
+func (s *{{.Plural}}Service) Create({{.Var}} *models.{{.Name}}, userID int64) error {
+	if err := s.{{.Parent.Plural}}.VerifyOwnership({{.Var}}.{{.Parent.Field}}, userID); err != nil {
+		return err
+	}
+	_, err := s.DB.Conn().NewInsert().
+		Model({{.Var}}).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleError(err)
+}
+
+func (s *{{.Plural}}Service) Update({{.Var}} *models.{{.Name}}, userID int64) error {
+{{- if .Movable}}
+	// The WHERE below sees pre-update values, so it only proves the *current* {{.Parent.LabelLower}}
+	// is the user's. The destination needs its own check.
+	if err := s.{{.Parent.Plural}}.VerifyOwnership({{.Var}}.{{.Parent.Field}}, userID); err != nil {
+		return err
+	}
+{{- end}}
+	res, err := s.DB.Conn().NewUpdate().
+		Model({{.Var}}).
+		Column(models.{{.Name}}UpdatableColumns...).
+		Where("{{.Table}}.id = ?", {{.Var}}.ID).
+		Where({{.PredicateConst}}, userID).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "{{.Label}} not found")
+}
+
+func (s *{{.Plural}}Service) Delete(id, userID int64) error {
+	res, err := s.DB.Conn().NewDelete().
+		Model((*models.{{.Name}})(nil)).
+		Where("{{.Table}}.id = ?", id).
+		Where({{.PredicateConst}}, userID).
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "{{.Label}} not found")
+}
+
+// VerifyOwnership is what child services call before creating or listing under a
+// {{.LabelLower}}. It uses the same predicate as Get.
+func (s *{{.Plural}}Service) VerifyOwnership({{.Var}}ID, userID int64) error {
+	exists, err := s.DB.Conn().NewSelect().
+		Model((*models.{{.Name}})(nil)).
+		Where("{{.Table}}.id = ?", {{.Var}}ID).
+		Where({{.PredicateConst}}, userID).
+		Exists(s.DB.Ctx)
+	if err != nil {
+		return s.DB.HandleError(err)
+	}
+	if !exists {
+		return errs.NewErrorNotFound("{{.Label}} not found")
+	}
+	return nil
+}
+{{- else}}
+func (s *{{.Plural}}Service) List(userID int64) (models.{{.Plural}}, error) {
+	var {{.PluralVar}} models.{{.Plural}}
+	err := s.DB.Conn().NewSelect().
+		Model(&{{.PluralVar}}).
+		Where("{{.Table}}.user_id = ?", userID).
+		Order({{.OrderBy}}).
+		Scan(s.DB.Ctx)
+	return {{.PluralVar}}, s.DB.HandleError(err)
+}
+
+func (s *{{.Plural}}Service) Get(id, userID int64) (*models.{{.Name}}, error) {
+	{{.Var}} := new(models.{{.Name}})
+	err := s.DB.Conn().NewSelect().
+		Model({{.Var}}).
+		Where("{{.Table}}.id = ? AND {{.Table}}.user_id = ?", id, userID).
+		Scan(s.DB.Ctx)
+	return {{.Var}}, s.DB.HandleErrorNotFound(err, "{{.Label}} not found")
+}
+
+func (s *{{.Plural}}Service) Create({{.Var}} *models.{{.Name}}) error {
+	_, err := s.DB.Conn().NewInsert().
+		Model({{.Var}}).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleError(err)
+}
+
+// Update writes only the allowlisted columns; the WHERE scopes the write to the owner, and
+// Returning("*") brings back the trigger-set updated_at.
+func (s *{{.Plural}}Service) Update({{.Var}} *models.{{.Name}}, userID int64) error {
+	res, err := s.DB.Conn().NewUpdate().
+		Model({{.Var}}).
+		Column(models.{{.Name}}UpdatableColumns...).
+		Where("id = ? AND user_id = ?", {{.Var}}.ID, userID).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "{{.Label}} not found")
+}
+
+func (s *{{.Plural}}Service) Delete(id, userID int64) error {
+	res, err := s.DB.Conn().NewDelete().
+		Model((*models.{{.Name}})(nil)).
+		Where("id = ? AND user_id = ?", id, userID).
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "{{.Label}} not found")
+}
+
+// VerifyOwnership is what child services call before creating or listing under a
+// {{.LabelLower}}. Exists: confirmation is all that's needed, not the row.
+func (s *{{.Plural}}Service) VerifyOwnership({{.Var}}ID, userID int64) error {
+	exists, err := s.DB.Conn().NewSelect().
+		Model((*models.{{.Name}})(nil)).
+		Where("id = ? AND user_id = ?", {{.Var}}ID, userID).
+		Exists(s.DB.Ctx)
+	if err != nil {
+		return s.DB.HandleError(err)
+	}
+	if !exists {
+		return errs.NewErrorNotFound("{{.Label}} not found")
+	}
+	return nil
+}
+{{- end}}

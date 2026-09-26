@@ -1,0 +1,140 @@
+package controllers
+
+import (
+	"net/http"
+{{- if .Parent}}
+	"strconv"
+{{- end}}
+
+	"github.com/go-raptor/raptor/v4"
+{{- if .Parent}}
+	"github.com/go-raptor/raptor/v4/errs"
+{{- end}}
+	"{{.Module}}/app/models"
+	"{{.Module}}/app/services"
+)
+
+type {{.Plural}}Controller struct {
+	raptor.Controller
+
+	Auth *services.AuthService
+	{{.Plural}} *services.{{.Plural}}Service
+	Validation *services.ValidationService
+}
+{{if .Parent}}
+// Index lists every {{.LabelLower}} the user owns, or one {{.Parent.LabelLower}}'s when ?{{.Parent.JSON}}= is given.
+func (c *{{.Plural}}Controller) Index(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	var {{.PluralVar}} models.{{.Plural}}
+	if raw := ctx.QueryParam("{{.Parent.JSON}}"); raw == "" {
+		{{.PluralVar}}, err = c.{{.Plural}}.List(user.ID)
+	} else {
+		{{.Parent.Var}}ID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil {
+			return errs.NewErrorBadRequest("Invalid {{.Parent.JSON}}")
+		}
+		{{.PluralVar}}, err = c.{{.Plural}}.ListBy{{.Parent.Name}}({{.Parent.Var}}ID, user.ID) // 404 if the {{.Parent.LabelLower}} isn't theirs
+	}
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.New{{.Name}}Responses({{.PluralVar}}))
+}
+{{- else}}
+func (c *{{.Plural}}Controller) Index(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	{{.PluralVar}}, err := c.{{.Plural}}.List(user.ID)
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.New{{.Name}}Responses({{.PluralVar}}))
+}
+{{- end}}
+
+func (c *{{.Plural}}Controller) Show(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	{{.Var}}, err := c.{{.Plural}}.Get(id, user.ID)
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.New{{.Name}}Response({{.Var}}))
+}
+
+func (c *{{.Plural}}Controller) Create(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	var req models.{{.Name}}Request
+	if err := bindJSON(ctx, &req); err != nil {
+		return err
+	}
+	if issues := c.Validation.{{.Name}}Schema.Validate(&req); len(issues) > 0 {
+		return validationFailed(issues)
+	}
+{{- if .Parent}}
+	{{.Var}} := req.ToModel()
+	if err := c.{{.Plural}}.Create({{.Var}}, user.ID); err != nil { // verifies the {{.Parent.LabelLower}}
+		return err
+	}
+{{- else}}
+	{{.Var}} := req.ToModel(user.ID)
+	if err := c.{{.Plural}}.Create({{.Var}}); err != nil {
+		return err
+	}
+{{- end}}
+	return ctx.Data(models.New{{.Name}}Response({{.Var}}), http.StatusCreated)
+}
+
+func (c *{{.Plural}}Controller) Update(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	var req models.{{.Name}}Request
+	if err := bindJSON(ctx, &req); err != nil {
+		return err
+	}
+	if issues := c.Validation.{{.Name}}Schema.Validate(&req); len(issues) > 0 {
+		return validationFailed(issues)
+	}
+	{{.Var}} := &models.{{.Name}}{ID: id} // identity from the path, state from the body
+	req.ApplyTo({{.Var}})
+	if err := c.{{.Plural}}.Update({{.Var}}, user.ID); err != nil {
+		return err
+	}
+	return ctx.Data(models.New{{.Name}}Response({{.Var}}))
+}
+
+func (c *{{.Plural}}Controller) Destroy(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	if err := c.{{.Plural}}.Delete(id, user.ID); err != nil {
+		return err
+	}
+	return ctx.NoContent()
+}
