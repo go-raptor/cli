@@ -1,0 +1,148 @@
+package models
+
+import (
+	"time"
+
+	"github.com/Oudwins/zog"
+	"github.com/uptrace/bun"
+)
+{{range .Enums}}
+// {{.Type}} mirrors the Postgres enum {{.SQLType}}. Declaration order is the enum's sort order.
+type {{.Type}} string
+
+const (
+{{- $type := .Type}}
+{{- range .Consts}}
+	{{.Name}} {{$type}} = "{{.Value}}"
+{{- end}}
+)
+
+// {{.Type}}Values is the allow-list the schema validates against; keep it in step with the
+// constants and the CREATE TYPE.
+var {{.Type}}Values = []string{ {{- range $i, $c := .Consts}}{{if $i}}, {{end}}string({{$c.Name}}){{end -}} }
+{{end}}
+type (
+	{{.Plural}} = []{{.Name}}
+	{{.Name}} struct {
+		bun.BaseModel `bun:"table:{{.Table}},alias:{{.Table}}"`
+
+		ID int64 `bun:"id,pk,autoincrement" json:"id"`
+{{- if .Parent}}
+		{{.Parent.Field}} int64 `bun:"{{.Parent.Column}},notnull" json:"{{.Parent.JSON}}"`
+{{- else}}
+		UserID int64 `bun:"user_id,notnull" json:"-"`
+{{- end}}
+{{- range .Fields}}
+		{{.GoName}} {{.GoType}} `bun:"{{.BunTag}}" json:"{{.JSON}}"`
+{{- end}}
+
+		CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp" json:"createdAt"`
+		UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp" json:"updatedAt"`
+{{if .Parent}}
+		{{.Parent.Name}} *{{.Parent.Name}} `bun:"rel:belongs-to,join:{{.Parent.Column}}=id" json:"-"`
+{{- else}}
+		User *User `bun:"rel:belongs-to,join:user_id=id" json:"-"`
+{{- end}}
+{{- range .Refs}}
+		{{.Relation}} *{{.Model}} `bun:"rel:belongs-to,join:{{.Column}}=id" json:"-"`
+{{- end}}
+	}
+)
+
+// --- Request ---
+
+type {{.Name}}Request struct {
+{{- if .Parent}}
+	{{.Parent.Field}} int64 `json:"{{.Parent.JSON}}"`
+{{- end}}
+{{- range .Fields}}
+	{{.GoName}} {{.ReqType}} `json:"{{.JSON}}"`
+{{- end}}
+}
+
+// {{.Name}}Schema validates a {{.Name}}Request. Keys are Go field names; the number schemas
+// match the field types exactly.
+func {{.Name}}Schema() *zog.StructSchema {
+	return zog.Struct(zog.Shape{
+{{- if .Parent}}
+		"{{.Parent.Field}}": zog.Int64().GT(0).Required(),
+{{- end}}
+{{- range .Fields}}
+		"{{.GoName}}": {{.Schema}},
+{{- end}}
+	})
+}
+{{if not .Parent}}
+// ToModel is create-only: it stamps the owner, then delegates the fields to ApplyTo.
+func (r {{.Name}}Request) ToModel(userID int64) *{{.Name}} {
+	{{.Recv}} := &{{.Name}}{UserID: userID}
+	r.ApplyTo({{.Recv}})
+	return {{.Recv}}
+}
+{{else if .Movable}}
+// ToModel is create-only. ApplyTo copies the parent too, because a {{.LabelLower}} can move.
+func (r {{.Name}}Request) ToModel() *{{.Name}} {
+	{{.Recv}} := &{{.Name}}{}
+	r.ApplyTo({{.Recv}})
+	return {{.Recv}}
+}
+{{else}}
+// ToModel is create-only: it stamps the parent, which ApplyTo never copies, so an update
+// cannot move the {{.LabelLower}}.
+func (r {{.Name}}Request) ToModel() *{{.Name}} {
+	{{.Recv}} := &{{.Name}}{ {{- .Parent.Field}}: r.{{.Parent.Field -}} }
+	r.ApplyTo({{.Recv}})
+	return {{.Recv}}
+}
+{{end}}
+// ApplyTo is the single place client-mutable fields are copied.
+func (r {{.Name}}Request) ApplyTo({{.Recv}} *{{.Name}}) {
+{{- if .Movable}}
+	{{.Recv}}.{{.Parent.Field}} = r.{{.Parent.Field}} // re-parentable: the service verifies the destination
+{{- end}}
+{{- range .Fields}}
+	{{$.Recv}}.{{.GoName}} = {{.Apply}}
+{{- end}}
+}
+
+// {{.Name}}UpdatableColumns is ApplyTo's field set in column form, for the Update allowlist.
+var {{.Name}}UpdatableColumns = []string{ {{- .Updatable -}} }
+
+// --- Response ---
+
+type (
+	{{.Name}}Responses = []{{.Name}}Response
+	{{.Name}}Response struct {
+		ID int64 `json:"id"`
+{{- if .Parent}}
+		{{.Parent.Field}} int64 `json:"{{.Parent.JSON}}"`
+{{- end}}
+{{- range .Fields}}
+		{{.GoName}} {{.GoType}} `json:"{{.JSON}}"`
+{{- end}}
+		CreatedAt time.Time `json:"createdAt"`
+		UpdatedAt time.Time `json:"updatedAt"`
+	}
+)
+
+func New{{.Name}}Response({{.Recv}} *{{.Name}}) {{.Name}}Response {
+	return {{.Name}}Response{
+		ID: {{.Recv}}.ID,
+{{- if .Parent}}
+		{{.Parent.Field}}: {{.Recv}}.{{.Parent.Field}},
+{{- end}}
+{{- range .Fields}}
+		{{.GoName}}: {{$.Recv}}.{{.GoName}},
+{{- end}}
+		CreatedAt: {{.Recv}}.CreatedAt,
+		UpdatedAt: {{.Recv}}.UpdatedAt,
+	}
+}
+
+func New{{.Name}}Responses({{.PluralVar}} {{.Plural}}) {{.Name}}Responses {
+	res := make({{.Name}}Responses, len({{.PluralVar}}))
+	for i := range {{.PluralVar}} {
+		res[i] = New{{.Name}}Response(&{{.PluralVar}}[i])
+	}
+	return res
+}
