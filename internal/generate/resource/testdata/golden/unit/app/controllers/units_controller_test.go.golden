@@ -152,3 +152,31 @@ func TestUnitsUnderStrangersOutcome(t *testing.T) {
 		t.Errorf("list under the stranger's outcome: %d, want 404", rec.Code)
 	}
 }
+
+func TestUnitsCannotMoveToStrangersOutcome(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	owner := newUser(t, fmt.Sprintf("owner-%d", suffix))
+	stranger := newUser(t, fmt.Sprintf("stranger-%d", suffix))
+	session := login(t, owner.Username)
+	unit := seedUnit(t, owner.ID)
+	strangersOutcome := seedOutcome(t, stranger.ID)
+
+	req := validUnitRequest(t, owner.ID)
+	req.OutcomeID = strangersOutcome.ID
+	path := fmt.Sprintf("/api/v1/units/%d", unit.ID)
+	if rec := unitsRequest(t, http.MethodPut, path, session, req); rec.Code != http.StatusNotFound {
+		t.Errorf("move to the stranger's outcome: %d, want 404", rec.Code)
+	}
+
+	rec := unitsRequest(t, http.MethodGet, path, session, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("show: %d %s", rec.Code, rec.Body)
+	}
+	var current models.UnitResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.OutcomeID != unit.OutcomeID {
+		t.Errorf("the unit moved: OutcomeID = %v, want %v", current.OutcomeID, unit.OutcomeID)
+	}
+}

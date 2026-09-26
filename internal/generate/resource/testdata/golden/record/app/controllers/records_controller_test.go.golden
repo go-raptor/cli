@@ -141,3 +141,37 @@ func TestRecordsUnderStrangersUnit(t *testing.T) {
 		t.Errorf("list under the stranger's unit: %d, want 404", rec.Code)
 	}
 }
+
+func TestRecordsParentIsImmutable(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	session := login(t, owner.Username)
+	record := seedRecord(t, owner.ID)
+	otherUnit := seedUnit(t, owner.ID)
+
+	req := validRecordRequest(t, owner.ID)
+	req.UnitID = otherUnit.ID
+	path := fmt.Sprintf("/api/v1/records/%d", record.ID)
+	rec := recordsRequest(t, http.MethodPut, path, session, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", rec.Code, rec.Body)
+	}
+	var updated models.RecordResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.UnitID != record.UnitID {
+		t.Errorf("the unit must not change: UnitID = %v, want %v", updated.UnitID, record.UnitID)
+	}
+
+	rec = recordsRequest(t, http.MethodGet, path, session, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("show: %d %s", rec.Code, rec.Body)
+	}
+	var current models.RecordResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.UnitID != record.UnitID {
+		t.Errorf("the unit must not change: UnitID = %v, want %v", current.UnitID, record.UnitID)
+	}
+}

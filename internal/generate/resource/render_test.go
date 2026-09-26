@@ -305,6 +305,17 @@ func TestRenderControllerTests(t *testing.T) {
 	} {
 		loose(t, child, want)
 	}
+	if !strings.Contains(child, "func TestTopicsParentIsImmutable(t *testing.T) {") {
+		t.Error("an immutable child needs a parent-immutability test")
+	}
+	if strings.Contains(child, "CannotMoveToStrangers") {
+		t.Error("an immutable child has no move test")
+	}
+
+	movable := mustRender(t, "controller_test.go.tmpl", mustView(t, "Slot", []string{"name:string"}, "Outcome", true))
+	if !strings.Contains(movable, "func TestSlotsCannotMoveToStrangersOutcome(t *testing.T) {") {
+		t.Error("a movable child needs a cannot-move-to-a-stranger's-parent test")
+	}
 
 	optional := mustRender(t, "controller_test.go.tmpl", mustView(t, "Counter", []string{"value:int"}, "", false))
 	if strings.Contains(optional, "CreateValidation") || strings.Contains(optional, "Updated") {

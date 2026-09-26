@@ -152,3 +152,37 @@ func TestOutcomesUnderStrangersCourse(t *testing.T) {
 		t.Errorf("list under the stranger's course: %d, want 404", rec.Code)
 	}
 }
+
+func TestOutcomesParentIsImmutable(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	session := login(t, owner.Username)
+	outcome := seedOutcome(t, owner.ID)
+	otherCourse := seedCourse(t, owner.ID)
+
+	req := validOutcomeRequest(t, owner.ID)
+	req.CourseID = otherCourse.ID
+	path := fmt.Sprintf("/api/v1/outcomes/%d", outcome.ID)
+	rec := outcomesRequest(t, http.MethodPut, path, session, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", rec.Code, rec.Body)
+	}
+	var updated models.OutcomeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.CourseID != outcome.CourseID {
+		t.Errorf("the course must not change: CourseID = %v, want %v", updated.CourseID, outcome.CourseID)
+	}
+
+	rec = outcomesRequest(t, http.MethodGet, path, session, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("show: %d %s", rec.Code, rec.Body)
+	}
+	var current models.OutcomeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.CourseID != outcome.CourseID {
+		t.Errorf("the course must not change: CourseID = %v, want %v", current.CourseID, outcome.CourseID)
+	}
+}
