@@ -1,0 +1,25 @@
+package controllers_test
+
+import (
+	"context"
+	"testing"
+
+	"example.com/shop/app/models"
+)
+
+// seedCourse inserts a course owned by userID, with sample values, and deletes it
+// when the test ends.
+func seedCourse(t *testing.T, userID int64) *models.Course {
+	t.Helper()
+	course := &models.Course{
+		UserID:       userID,
+		Name:         "Sample",
+		LectureHours: 1,
+		DivisionID:   seedDivision(t).ID,
+	}
+	mustInsert(t, db(t).NewInsert().Model(course).Returning("*"))
+	t.Cleanup(func() {
+		_, _ = db(t).NewDelete().Model((*models.Course)(nil)).Where("id = ?", course.ID).Exec(context.Background())
+	})
+	return course
+}

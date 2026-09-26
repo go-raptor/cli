@@ -1,0 +1,116 @@
+package controllers
+
+import (
+	"net/http"
+	"strconv"
+
+	"example.com/shop/app/models"
+	"example.com/shop/app/services"
+	"github.com/go-raptor/raptor/v4"
+	"github.com/go-raptor/raptor/v4/errs"
+)
+
+type UnitsController struct {
+	raptor.Controller
+
+	Auth       *services.AuthService
+	Units      *services.UnitsService
+	Validation *services.ValidationService
+}
+
+// Index lists every unit the user owns, or one outcome's when ?outcomeId= is given.
+func (c *UnitsController) Index(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	var units models.Units
+	if raw := ctx.QueryParam("outcomeId"); raw == "" {
+		units, err = c.Units.List(user.ID)
+	} else {
+		outcomeID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil {
+			return errs.NewErrorBadRequest("Invalid outcomeId")
+		}
+		units, err = c.Units.ListByOutcome(outcomeID, user.ID) // 404 if the outcome isn't theirs
+	}
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.NewUnitResponses(units))
+}
+
+func (c *UnitsController) Show(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	unit, err := c.Units.Get(id, user.ID)
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.NewUnitResponse(unit))
+}
+
+func (c *UnitsController) Create(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	var req models.UnitRequest
+	if err := bindJSON(ctx, &req); err != nil {
+		return err
+	}
+	if issues := c.Validation.UnitSchema.Validate(&req); len(issues) > 0 {
+		return validationFailed(issues)
+	}
+	unit := req.ToModel()
+	if err := c.Units.Create(unit, user.ID); err != nil { // verifies the outcome
+		return err
+	}
+	return ctx.Data(models.NewUnitResponse(unit), http.StatusCreated)
+}
+
+func (c *UnitsController) Update(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	var req models.UnitRequest
+	if err := bindJSON(ctx, &req); err != nil {
+		return err
+	}
+	if issues := c.Validation.UnitSchema.Validate(&req); len(issues) > 0 {
+		return validationFailed(issues)
+	}
+	unit := &models.Unit{ID: id} // identity from the path, state from the body
+	req.ApplyTo(unit)
+	if err := c.Units.Update(unit, user.ID); err != nil {
+		return err
+	}
+	return ctx.Data(models.NewUnitResponse(unit))
+}
+
+func (c *UnitsController) Destroy(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	if err := c.Units.Delete(id, user.ID); err != nil {
+		return err
+	}
+	return ctx.NoContent()
+}

@@ -1,0 +1,23 @@
+package controllers_test
+
+import (
+	"context"
+	"testing"
+
+	"example.com/shop/app/models"
+)
+
+// seedRecord inserts a record owned by userID, with sample values, and deletes it
+// when the test ends.
+func seedRecord(t *testing.T, userID int64) *models.Record {
+	t.Helper()
+	record := &models.Record{
+		UnitID:      seedUnit(t, userID).ID,
+		GroupNumber: 1,
+	}
+	mustInsert(t, db(t).NewInsert().Model(record).Returning("*"))
+	t.Cleanup(func() {
+		_, _ = db(t).NewDelete().Model((*models.Record)(nil)).Where("id = ?", record.ID).Exec(context.Background())
+	})
+	return record
+}

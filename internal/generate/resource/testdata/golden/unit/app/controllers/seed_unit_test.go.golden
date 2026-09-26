@@ -1,0 +1,25 @@
+package controllers_test
+
+import (
+	"context"
+	"testing"
+
+	"example.com/shop/app/models"
+)
+
+// seedUnit inserts a unit owned by userID, with sample values, and deletes it
+// when the test ends.
+func seedUnit(t *testing.T, userID int64) *models.Unit {
+	t.Helper()
+	unit := &models.Unit{
+		OutcomeID: seedOutcome(t, userID).ID,
+		Title:     "Sample",
+		Type:      models.UnitTypeLecture,
+		Active:    true,
+	}
+	mustInsert(t, db(t).NewInsert().Model(unit).Returning("*"))
+	t.Cleanup(func() {
+		_, _ = db(t).NewDelete().Model((*models.Unit)(nil)).Where("id = ?", unit.ID).Exec(context.Background())
+	})
+	return unit
+}

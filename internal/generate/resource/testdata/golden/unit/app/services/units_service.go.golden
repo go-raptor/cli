@@ -1,0 +1,111 @@
+package services
+
+import (
+	"example.com/shop/app/models"
+	"github.com/go-raptor/raptor/v4"
+	"github.com/go-raptor/raptor/v4/errs"
+)
+
+type UnitsService struct {
+	raptor.Service
+
+	DB       *DatabaseService
+	Outcomes *OutcomesService // the immediate parent, injected by type like DB
+}
+
+// unitsOwnedByUser scopes a unit to its owner through its parent. Get, Update,
+// Delete and VerifyOwnership share it, so the ownership rule is written once.
+const unitsOwnedByUser = `units.outcome_id IN (
+	SELECT outcomes.id FROM outcomes
+	JOIN courses ON courses.id = outcomes.course_id
+	WHERE courses.user_id = ?
+)`
+
+// List is every unit the user owns: the unfiltered index.
+func (s *UnitsService) List(userID int64) (models.Units, error) {
+	var units models.Units
+	err := s.DB.Conn().NewSelect().
+		Model(&units).
+		Where(unitsOwnedByUser, userID).
+		Order("units.outcome_id", "units.title", "units.id").
+		Scan(s.DB.Ctx)
+	return units, s.DB.HandleError(err)
+}
+
+// ListByOutcome verifies the parent first: filtering alone could not tell "not your
+// outcome" from "a outcome with no units", which are both zero rows.
+func (s *UnitsService) ListByOutcome(outcomeID, userID int64) (models.Units, error) {
+	if err := s.Outcomes.VerifyOwnership(outcomeID, userID); err != nil {
+		return nil, err
+	}
+	var units models.Units
+	err := s.DB.Conn().NewSelect().
+		Model(&units).
+		Where("units.outcome_id = ?", outcomeID).
+		Order("units.title", "units.id").
+		Scan(s.DB.Ctx)
+	return units, s.DB.HandleError(err)
+}
+
+func (s *UnitsService) Get(id, userID int64) (*models.Unit, error) {
+	unit := new(models.Unit)
+	err := s.DB.Conn().NewSelect().
+		Model(unit).
+		Where("units.id = ?", id).
+		Where(unitsOwnedByUser, userID).
+		Scan(s.DB.Ctx)
+	return unit, s.DB.HandleErrorNotFound(err, "Unit not found")
+}
+
+func (s *UnitsService) Create(unit *models.Unit, userID int64) error {
+	if err := s.Outcomes.VerifyOwnership(unit.OutcomeID, userID); err != nil {
+		return err
+	}
+	_, err := s.DB.Conn().NewInsert().
+		Model(unit).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleError(err)
+}
+
+func (s *UnitsService) Update(unit *models.Unit, userID int64) error {
+	// The WHERE below sees pre-update values, so it only proves the *current* outcome
+	// is the user's. The destination needs its own check.
+	if err := s.Outcomes.VerifyOwnership(unit.OutcomeID, userID); err != nil {
+		return err
+	}
+	res, err := s.DB.Conn().NewUpdate().
+		Model(unit).
+		Column(models.UnitUpdatableColumns...).
+		Where("units.id = ?", unit.ID).
+		Where(unitsOwnedByUser, userID).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "Unit not found")
+}
+
+func (s *UnitsService) Delete(id, userID int64) error {
+	res, err := s.DB.Conn().NewDelete().
+		Model((*models.Unit)(nil)).
+		Where("units.id = ?", id).
+		Where(unitsOwnedByUser, userID).
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "Unit not found")
+}
+
+// VerifyOwnership is what child services call before creating or listing under a
+// unit. It uses the same predicate as Get.
+func (s *UnitsService) VerifyOwnership(unitID, userID int64) error {
+	exists, err := s.DB.Conn().NewSelect().
+		Model((*models.Unit)(nil)).
+		Where("units.id = ?", unitID).
+		Where(unitsOwnedByUser, userID).
+		Exists(s.DB.Ctx)
+	if err != nil {
+		return s.DB.HandleError(err)
+	}
+	if !exists {
+		return errs.NewErrorNotFound("Unit not found")
+	}
+	return nil
+}

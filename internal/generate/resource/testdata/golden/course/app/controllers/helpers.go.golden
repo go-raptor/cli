@@ -1,0 +1,48 @@
+package controllers
+
+import (
+	"errors"
+	"mime"
+	"net/http"
+	"strconv"
+
+	"github.com/Oudwins/zog"
+	"github.com/go-raptor/raptor/v4"
+	"github.com/go-raptor/raptor/v4/errs"
+)
+
+// bindJSON decodes a JSON request body.
+//   - The body must be declared application/json, or the answer is 415. That check is what makes
+//     "JSON-only bodies" a real CSRF defense: ctx.Bind ignores Content-Type, and a cross-site
+//     form can post text/plain whose body happens to be valid JSON.
+//   - Malformed JSON is a 400. An oversized body keeps its *http.MaxBytesError, which Raptor
+//     answers with 413.
+func bindJSON(ctx *raptor.Context, v any) error {
+	mediaType, _, err := mime.ParseMediaType(ctx.Request().Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		return errs.NewErrorUnsupportedMediaType("Expected an application/json body")
+	}
+	if err := ctx.Bind(v); err != nil {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			return err
+		}
+		return errs.NewErrorBadRequest("Invalid JSON body")
+	}
+	return nil
+}
+
+// validationFailed is the 422 for a schema failure. Flatten keeps only field names and
+// messages: the raw issues carry the submitted values, which must not reach the client or the
+// request log.
+func validationFailed(issues zog.ZogIssueList) error {
+	return errs.NewErrorUnprocessableEntity("Validation failed", "issues", zog.Issues.Flatten(issues))
+}
+
+// pathID parses the {id} path parameter; garbage is a 400.
+func pathID(ctx *raptor.Context) (int64, error) {
+	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
+	if err != nil {
+		return 0, errs.NewErrorBadRequest("Invalid ID")
+	}
+	return id, nil
+}

@@ -1,0 +1,24 @@
+package controllers_test
+
+import (
+	"context"
+	"strconv"
+	"testing"
+	"time"
+
+	"example.com/shop/app/models"
+)
+
+// seedDivision inserts a Division with sample values and deletes it when the test ends.
+func seedDivision(t *testing.T) *models.Division {
+	t.Helper()
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
+	division := &models.Division{
+		Name: "Name " + suffix,
+	}
+	mustInsert(t, db(t).NewInsert().Model(division).Returning("*"))
+	t.Cleanup(func() {
+		_, _ = db(t).NewDelete().Model((*models.Division)(nil)).Where("id = ?", division.ID).Exec(context.Background())
+	})
+	return division
+}

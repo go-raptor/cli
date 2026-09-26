@@ -1,0 +1,25 @@
+package controllers_test
+
+import (
+	"context"
+	"testing"
+
+	"example.com/shop/app/models"
+)
+
+// seedOutcome inserts a outcome owned by userID, with sample values, and deletes it
+// when the test ends.
+func seedOutcome(t *testing.T, userID int64) *models.Outcome {
+	t.Helper()
+	outcome := &models.Outcome{
+		CourseID: seedCourse(t, userID).ID,
+		Name:     "Sample",
+		Criteria: "Sample text",
+		Position: 1,
+	}
+	mustInsert(t, db(t).NewInsert().Model(outcome).Returning("*"))
+	t.Cleanup(func() {
+		_, _ = db(t).NewDelete().Model((*models.Outcome)(nil)).Where("id = ?", outcome.ID).Exec(context.Background())
+	})
+	return outcome
+}

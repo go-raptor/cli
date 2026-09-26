@@ -1,0 +1,15 @@
+package models_test
+
+import (
+	"testing"
+
+	"example.com/shop/app/models"
+)
+
+// A number schema whose type doesn't match its field panics inside Validate. The zero-value
+// request reaches every field, so this one test catches every mismatch at go test time.
+func TestSchemasMatchTheirRequests(t *testing.T) {
+	models.CourseSchema().Validate(&models.CourseRequest{})
+	models.OutcomeSchema().Validate(&models.OutcomeRequest{})
+	models.UnitSchema().Validate(&models.UnitRequest{})
+}

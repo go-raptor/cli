@@ -1,0 +1,79 @@
+package controllers_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json/v2"
+	"fmt"
+	"net/http"
+	"sync/atomic"
+	"testing"
+
+	"example.com/shop/app/models"
+	"example.com/shop/app/services"
+	"github.com/go-raptor/raptor/v4"
+	"github.com/uptrace/bun"
+	"golang.org/x/crypto/bcrypt"
+)
+
+const testPassword = "test-password"
+
+func db(t *testing.T) *bun.DB {
+	t.Helper()
+	service := raptor.GetService[services.DatabaseService](app)
+	if service == nil {
+		t.Fatal("DatabaseService is not registered")
+	}
+	return service.Conn()
+}
+
+func mustInsert(t *testing.T, q *bun.InsertQuery) {
+	t.Helper()
+	if _, err := q.Exec(t.Context()); err != nil {
+		t.Fatalf("seed insert: %v", err)
+	}
+}
+
+// newUser inserts a user who can log in with testPassword. Deleting the user when the test
+// ends cascades through everything the user owns.
+func newUser(t *testing.T, username string) *models.User {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost) // MinCost: fast tests
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := &models.User{Username: username, Password: string(hash), Email: username + "@example.test"}
+	mustInsert(t, db(t).NewInsert().Model(user).Returning("*"))
+	t.Cleanup(func() {
+		_, _ = db(t).NewDelete().Model((*models.User)(nil)).Where("id = ?", user.ID).Exec(context.Background())
+	})
+	return user
+}
+
+var clientIPs atomic.Uint32
+
+// newClient simulates a separate browser, with its own address and so its own limiter bucket.
+func newClient() raptor.TestRequestOption {
+	n := clientIPs.Add(1)
+	return raptor.WithRemoteAddr(fmt.Sprintf("10.%d.%d.%d", byte(n>>16), byte(n>>8), byte(n)))
+}
+
+func login(t *testing.T, username string) *http.Cookie {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"username": username, "password": testPassword})
+	rec := app.TestPost("/api/v1/auth/login", bytes.NewReader(body), newClient())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", rec.Code, rec.Body)
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "session" {
+			return c
+		}
+	}
+	t.Fatal("login set no session cookie")
+	return nil
+}
+
+func withSession(c *http.Cookie) raptor.TestRequestOption {
+	return raptor.WithHeader("Cookie", c.Name+"="+c.Value)
+}

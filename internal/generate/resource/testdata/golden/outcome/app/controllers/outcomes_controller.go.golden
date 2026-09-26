@@ -1,0 +1,116 @@
+package controllers
+
+import (
+	"net/http"
+	"strconv"
+
+	"example.com/shop/app/models"
+	"example.com/shop/app/services"
+	"github.com/go-raptor/raptor/v4"
+	"github.com/go-raptor/raptor/v4/errs"
+)
+
+type OutcomesController struct {
+	raptor.Controller
+
+	Auth       *services.AuthService
+	Outcomes   *services.OutcomesService
+	Validation *services.ValidationService
+}
+
+// Index lists every outcome the user owns, or one course's when ?courseId= is given.
+func (c *OutcomesController) Index(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+
+	var outcomes models.Outcomes
+	if raw := ctx.QueryParam("courseId"); raw == "" {
+		outcomes, err = c.Outcomes.List(user.ID)
+	} else {
+		courseID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil {
+			return errs.NewErrorBadRequest("Invalid courseId")
+		}
+		outcomes, err = c.Outcomes.ListByCourse(courseID, user.ID) // 404 if the course isn't theirs
+	}
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.NewOutcomeResponses(outcomes))
+}
+
+func (c *OutcomesController) Show(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	outcome, err := c.Outcomes.Get(id, user.ID)
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.NewOutcomeResponse(outcome))
+}
+
+func (c *OutcomesController) Create(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	var req models.OutcomeRequest
+	if err := bindJSON(ctx, &req); err != nil {
+		return err
+	}
+	if issues := c.Validation.OutcomeSchema.Validate(&req); len(issues) > 0 {
+		return validationFailed(issues)
+	}
+	outcome := req.ToModel()
+	if err := c.Outcomes.Create(outcome, user.ID); err != nil { // verifies the course
+		return err
+	}
+	return ctx.Data(models.NewOutcomeResponse(outcome), http.StatusCreated)
+}
+
+func (c *OutcomesController) Update(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	var req models.OutcomeRequest
+	if err := bindJSON(ctx, &req); err != nil {
+		return err
+	}
+	if issues := c.Validation.OutcomeSchema.Validate(&req); len(issues) > 0 {
+		return validationFailed(issues)
+	}
+	outcome := &models.Outcome{ID: id} // identity from the path, state from the body
+	req.ApplyTo(outcome)
+	if err := c.Outcomes.Update(outcome, user.ID); err != nil {
+		return err
+	}
+	return ctx.Data(models.NewOutcomeResponse(outcome))
+}
+
+func (c *OutcomesController) Destroy(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	if err := c.Outcomes.Delete(id, user.ID); err != nil {
+		return err
+	}
+	return ctx.NoContent()
+}

@@ -1,0 +1,87 @@
+package models
+
+import (
+	"time"
+
+	"github.com/Oudwins/zog"
+	"github.com/uptrace/bun"
+)
+
+type (
+	Records = []Record
+	Record  struct {
+		bun.BaseModel `bun:"table:records,alias:records"`
+
+		ID          int64 `bun:"id,pk,autoincrement" json:"id"`
+		UnitID      int64 `bun:"unit_id,notnull" json:"unitId"`
+		GroupNumber int   `bun:"group_number,notnull" json:"groupNumber"`
+
+		CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp" json:"createdAt"`
+		UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp" json:"updatedAt"`
+
+		Unit *Unit `bun:"rel:belongs-to,join:unit_id=id" json:"-"`
+	}
+)
+
+// --- Request ---
+
+type RecordRequest struct {
+	UnitID      int64 `json:"unitId"`
+	GroupNumber int   `json:"groupNumber"`
+}
+
+// RecordSchema validates a RecordRequest. Keys are Go field names; the number schemas
+// match the field types exactly.
+func RecordSchema() *zog.StructSchema {
+	return zog.Struct(zog.Shape{
+		"UnitID":      zog.Int64().GT(0).Required(),
+		"GroupNumber": zog.Int().GTE(0),
+	})
+}
+
+// ToModel is create-only: it stamps the parent, which ApplyTo never copies, so an update
+// cannot move the record.
+func (r RecordRequest) ToModel() *Record {
+	m := &Record{UnitID: r.UnitID}
+	r.ApplyTo(m)
+	return m
+}
+
+// ApplyTo is the single place client-mutable fields are copied.
+func (r RecordRequest) ApplyTo(m *Record) {
+	m.GroupNumber = r.GroupNumber
+}
+
+// RecordUpdatableColumns is ApplyTo's field set in column form, for the Update allowlist.
+var RecordUpdatableColumns = []string{"group_number"}
+
+// --- Response ---
+
+type (
+	RecordResponses = []RecordResponse
+	RecordResponse  struct {
+		ID          int64     `json:"id"`
+		UnitID      int64     `json:"unitId"`
+		GroupNumber int       `json:"groupNumber"`
+		CreatedAt   time.Time `json:"createdAt"`
+		UpdatedAt   time.Time `json:"updatedAt"`
+	}
+)
+
+func NewRecordResponse(m *Record) RecordResponse {
+	return RecordResponse{
+		ID:          m.ID,
+		UnitID:      m.UnitID,
+		GroupNumber: m.GroupNumber,
+		CreatedAt:   m.CreatedAt,
+		UpdatedAt:   m.UpdatedAt,
+	}
+}
+
+func NewRecordResponses(records Records) RecordResponses {
+	res := make(RecordResponses, len(records))
+	for i := range records {
+		res[i] = NewRecordResponse(&records[i])
+	}
+	return res
+}

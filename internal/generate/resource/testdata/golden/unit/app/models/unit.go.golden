@@ -1,0 +1,117 @@
+package models
+
+import (
+	"time"
+
+	"github.com/Oudwins/zog"
+	"github.com/uptrace/bun"
+)
+
+// UnitType mirrors the Postgres enum unit_type. Declaration order is the enum's sort order.
+type UnitType string
+
+const (
+	UnitTypeLecture UnitType = "lecture"
+	UnitTypeLab     UnitType = "lab"
+)
+
+// UnitTypeValues is the allow-list the schema validates against; keep it in step with the
+// constants and the CREATE TYPE.
+var UnitTypeValues = []string{string(UnitTypeLecture), string(UnitTypeLab)}
+
+type (
+	Units = []Unit
+	Unit  struct {
+		bun.BaseModel `bun:"table:units,alias:units"`
+
+		ID        int64      `bun:"id,pk,autoincrement" json:"id"`
+		OutcomeID int64      `bun:"outcome_id,notnull" json:"outcomeId"`
+		Title     string     `bun:"title,notnull" json:"title"`
+		Type      UnitType   `bun:"type,notnull" json:"type"`
+		StartsAt  *time.Time `bun:"starts_at" json:"startsAt"`
+		Active    bool       `bun:"active,notnull" json:"active"`
+
+		CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp" json:"createdAt"`
+		UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp" json:"updatedAt"`
+
+		Outcome *Outcome `bun:"rel:belongs-to,join:outcome_id=id" json:"-"`
+	}
+)
+
+// --- Request ---
+
+type UnitRequest struct {
+	OutcomeID int64      `json:"outcomeId"`
+	Title     string     `json:"title"`
+	Type      string     `json:"type"`
+	StartsAt  *time.Time `json:"startsAt"`
+	Active    bool       `json:"active"`
+}
+
+// UnitSchema validates a UnitRequest. Keys are Go field names; the number schemas
+// match the field types exactly.
+func UnitSchema() *zog.StructSchema {
+	return zog.Struct(zog.Shape{
+		"OutcomeID": zog.Int64().GT(0).Required(),
+		"Title":     zog.String().Trim().Min(1).TestFunc(maxChars(80)).Required(),
+		"Type":      zog.String().OneOf(UnitTypeValues).Required(),
+		"StartsAt":  zog.Ptr(zog.Time()),
+		"Active":    zog.Bool(),
+	})
+}
+
+// ToModel is create-only. ApplyTo copies the parent too, because a unit can move.
+func (r UnitRequest) ToModel() *Unit {
+	u := &Unit{}
+	r.ApplyTo(u)
+	return u
+}
+
+// ApplyTo is the single place client-mutable fields are copied.
+func (r UnitRequest) ApplyTo(u *Unit) {
+	u.OutcomeID = r.OutcomeID // re-parentable: the service verifies the destination
+	u.Title = r.Title
+	u.Type = UnitType(r.Type)
+	u.StartsAt = r.StartsAt
+	u.Active = r.Active
+}
+
+// UnitUpdatableColumns is ApplyTo's field set in column form, for the Update allowlist.
+var UnitUpdatableColumns = []string{"outcome_id", "title", "type", "starts_at", "active"}
+
+// --- Response ---
+
+type (
+	UnitResponses = []UnitResponse
+	UnitResponse  struct {
+		ID        int64      `json:"id"`
+		OutcomeID int64      `json:"outcomeId"`
+		Title     string     `json:"title"`
+		Type      UnitType   `json:"type"`
+		StartsAt  *time.Time `json:"startsAt"`
+		Active    bool       `json:"active"`
+		CreatedAt time.Time  `json:"createdAt"`
+		UpdatedAt time.Time  `json:"updatedAt"`
+	}
+)
+
+func NewUnitResponse(u *Unit) UnitResponse {
+	return UnitResponse{
+		ID:        u.ID,
+		OutcomeID: u.OutcomeID,
+		Title:     u.Title,
+		Type:      u.Type,
+		StartsAt:  u.StartsAt,
+		Active:    u.Active,
+		CreatedAt: u.CreatedAt,
+		UpdatedAt: u.UpdatedAt,
+	}
+}
+
+func NewUnitResponses(units Units) UnitResponses {
+	res := make(UnitResponses, len(units))
+	for i := range units {
+		res[i] = NewUnitResponse(&units[i])
+	}
+	return res
+}

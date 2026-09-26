@@ -1,0 +1,76 @@
+package services
+
+import (
+	"example.com/shop/app/models"
+	"github.com/go-raptor/raptor/v4"
+	"github.com/go-raptor/raptor/v4/errs"
+)
+
+type CoursesService struct {
+	raptor.Service
+
+	DB *DatabaseService
+}
+
+func (s *CoursesService) List(userID int64) (models.Courses, error) {
+	var courses models.Courses
+	err := s.DB.Conn().NewSelect().
+		Model(&courses).
+		Where("courses.user_id = ?", userID).
+		Order("courses.name", "courses.id").
+		Scan(s.DB.Ctx)
+	return courses, s.DB.HandleError(err)
+}
+
+func (s *CoursesService) Get(id, userID int64) (*models.Course, error) {
+	course := new(models.Course)
+	err := s.DB.Conn().NewSelect().
+		Model(course).
+		Where("courses.id = ? AND courses.user_id = ?", id, userID).
+		Scan(s.DB.Ctx)
+	return course, s.DB.HandleErrorNotFound(err, "Course not found")
+}
+
+func (s *CoursesService) Create(course *models.Course) error {
+	_, err := s.DB.Conn().NewInsert().
+		Model(course).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleError(err)
+}
+
+// Update writes only the allowlisted columns; the WHERE scopes the write to the owner, and
+// Returning("*") brings back the trigger-set updated_at.
+func (s *CoursesService) Update(course *models.Course, userID int64) error {
+	res, err := s.DB.Conn().NewUpdate().
+		Model(course).
+		Column(models.CourseUpdatableColumns...).
+		Where("id = ? AND user_id = ?", course.ID, userID).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "Course not found")
+}
+
+func (s *CoursesService) Delete(id, userID int64) error {
+	res, err := s.DB.Conn().NewDelete().
+		Model((*models.Course)(nil)).
+		Where("id = ? AND user_id = ?", id, userID).
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "Course not found")
+}
+
+// VerifyOwnership is what child services call before creating or listing under a
+// course. Exists: confirmation is all that's needed, not the row.
+func (s *CoursesService) VerifyOwnership(courseID, userID int64) error {
+	exists, err := s.DB.Conn().NewSelect().
+		Model((*models.Course)(nil)).
+		Where("id = ? AND user_id = ?", courseID, userID).
+		Exists(s.DB.Ctx)
+	if err != nil {
+		return s.DB.HandleError(err)
+	}
+	if !exists {
+		return errs.NewErrorNotFound("Course not found")
+	}
+	return nil
+}

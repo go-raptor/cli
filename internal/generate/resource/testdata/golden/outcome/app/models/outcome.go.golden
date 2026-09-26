@@ -1,0 +1,99 @@
+package models
+
+import (
+	"time"
+
+	"github.com/Oudwins/zog"
+	"github.com/uptrace/bun"
+)
+
+type (
+	Outcomes = []Outcome
+	Outcome  struct {
+		bun.BaseModel `bun:"table:outcomes,alias:outcomes"`
+
+		ID       int64  `bun:"id,pk,autoincrement" json:"id"`
+		CourseID int64  `bun:"course_id,notnull" json:"courseId"`
+		Name     string `bun:"name,notnull" json:"name"`
+		Criteria string `bun:"criteria,notnull" json:"criteria"`
+		Position int    `bun:"position,notnull" json:"position"`
+
+		CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp" json:"createdAt"`
+		UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp" json:"updatedAt"`
+
+		Course *Course `bun:"rel:belongs-to,join:course_id=id" json:"-"`
+	}
+)
+
+// --- Request ---
+
+type OutcomeRequest struct {
+	CourseID int64  `json:"courseId"`
+	Name     string `json:"name"`
+	Criteria string `json:"criteria"`
+	Position int    `json:"position"`
+}
+
+// OutcomeSchema validates a OutcomeRequest. Keys are Go field names; the number schemas
+// match the field types exactly.
+func OutcomeSchema() *zog.StructSchema {
+	return zog.Struct(zog.Shape{
+		"CourseID": zog.Int64().GT(0).Required(),
+		"Name":     zog.String().Trim().Min(1).TestFunc(maxChars(150)).Required(),
+		"Criteria": zog.String(),
+		"Position": zog.Int().GTE(0),
+	})
+}
+
+// ToModel is create-only: it stamps the parent, which ApplyTo never copies, so an update
+// cannot move the outcome.
+func (r OutcomeRequest) ToModel() *Outcome {
+	o := &Outcome{CourseID: r.CourseID}
+	r.ApplyTo(o)
+	return o
+}
+
+// ApplyTo is the single place client-mutable fields are copied.
+func (r OutcomeRequest) ApplyTo(o *Outcome) {
+	o.Name = r.Name
+	o.Criteria = r.Criteria
+	o.Position = r.Position
+}
+
+// OutcomeUpdatableColumns is ApplyTo's field set in column form, for the Update allowlist.
+var OutcomeUpdatableColumns = []string{"name", "criteria", "position"}
+
+// --- Response ---
+
+type (
+	OutcomeResponses = []OutcomeResponse
+	OutcomeResponse  struct {
+		ID        int64     `json:"id"`
+		CourseID  int64     `json:"courseId"`
+		Name      string    `json:"name"`
+		Criteria  string    `json:"criteria"`
+		Position  int       `json:"position"`
+		CreatedAt time.Time `json:"createdAt"`
+		UpdatedAt time.Time `json:"updatedAt"`
+	}
+)
+
+func NewOutcomeResponse(o *Outcome) OutcomeResponse {
+	return OutcomeResponse{
+		ID:        o.ID,
+		CourseID:  o.CourseID,
+		Name:      o.Name,
+		Criteria:  o.Criteria,
+		Position:  o.Position,
+		CreatedAt: o.CreatedAt,
+		UpdatedAt: o.UpdatedAt,
+	}
+}
+
+func NewOutcomeResponses(outcomes Outcomes) OutcomeResponses {
+	res := make(OutcomeResponses, len(outcomes))
+	for i := range outcomes {
+		res[i] = NewOutcomeResponse(&outcomes[i])
+	}
+	return res
+}

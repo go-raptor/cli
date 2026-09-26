@@ -1,0 +1,95 @@
+package models
+
+import (
+	"time"
+
+	"github.com/Oudwins/zog"
+	"github.com/uptrace/bun"
+)
+
+type (
+	Courses = []Course
+	Course  struct {
+		bun.BaseModel `bun:"table:courses,alias:courses"`
+
+		ID           int64  `bun:"id,pk,autoincrement" json:"id"`
+		UserID       int64  `bun:"user_id,notnull" json:"-"`
+		Name         string `bun:"name,notnull" json:"name"`
+		LectureHours int    `bun:"lecture_hours,notnull" json:"lectureHours"`
+		DivisionID   int64  `bun:"division_id,notnull" json:"divisionId"`
+
+		CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp" json:"createdAt"`
+		UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp" json:"updatedAt"`
+
+		User     *User     `bun:"rel:belongs-to,join:user_id=id" json:"-"`
+		Division *Division `bun:"rel:belongs-to,join:division_id=id" json:"-"`
+	}
+)
+
+// --- Request ---
+
+type CourseRequest struct {
+	Name         string `json:"name"`
+	LectureHours int    `json:"lectureHours"`
+	DivisionID   int64  `json:"divisionId"`
+}
+
+// CourseSchema validates a CourseRequest. Keys are Go field names; the number schemas
+// match the field types exactly.
+func CourseSchema() *zog.StructSchema {
+	return zog.Struct(zog.Shape{
+		"Name":         zog.String().Trim().Min(1).TestFunc(maxChars(150)).Required(),
+		"LectureHours": zog.Int().GTE(0),
+		"DivisionID":   zog.Int64().GT(0).Required(),
+	})
+}
+
+// ToModel is create-only: it stamps the owner, then delegates the fields to ApplyTo.
+func (r CourseRequest) ToModel(userID int64) *Course {
+	c := &Course{UserID: userID}
+	r.ApplyTo(c)
+	return c
+}
+
+// ApplyTo is the single place client-mutable fields are copied.
+func (r CourseRequest) ApplyTo(c *Course) {
+	c.Name = r.Name
+	c.LectureHours = r.LectureHours
+	c.DivisionID = r.DivisionID
+}
+
+// CourseUpdatableColumns is ApplyTo's field set in column form, for the Update allowlist.
+var CourseUpdatableColumns = []string{"name", "lecture_hours", "division_id"}
+
+// --- Response ---
+
+type (
+	CourseResponses = []CourseResponse
+	CourseResponse  struct {
+		ID           int64     `json:"id"`
+		Name         string    `json:"name"`
+		LectureHours int       `json:"lectureHours"`
+		DivisionID   int64     `json:"divisionId"`
+		CreatedAt    time.Time `json:"createdAt"`
+		UpdatedAt    time.Time `json:"updatedAt"`
+	}
+)
+
+func NewCourseResponse(c *Course) CourseResponse {
+	return CourseResponse{
+		ID:           c.ID,
+		Name:         c.Name,
+		LectureHours: c.LectureHours,
+		DivisionID:   c.DivisionID,
+		CreatedAt:    c.CreatedAt,
+		UpdatedAt:    c.UpdatedAt,
+	}
+}
+
+func NewCourseResponses(courses Courses) CourseResponses {
+	res := make(CourseResponses, len(courses))
+	for i := range courses {
+		res[i] = NewCourseResponse(&courses[i])
+	}
+	return res
+}

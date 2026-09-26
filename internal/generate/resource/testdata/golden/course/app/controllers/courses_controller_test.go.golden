@@ -1,0 +1,135 @@
+package controllers_test
+
+import (
+	"bytes"
+	"encoding/json/v2"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"testing"
+	"time"
+
+	"example.com/shop/app/models"
+	"github.com/go-raptor/raptor/v4"
+)
+
+// coursesRequest sends body as JSON, with the session cookie when there is one.
+func coursesRequest(t *testing.T, method, path string, session *http.Cookie, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reader = bytes.NewReader(encoded)
+	}
+	var opts []raptor.TestRequestOption
+	if session != nil {
+		opts = append(opts, withSession(session))
+	}
+	return app.TestRequest(method, path, reader, opts...)
+}
+
+// validCourseRequest is a request that passes validation.
+func validCourseRequest(t *testing.T, userID int64) models.CourseRequest {
+	t.Helper()
+	return models.CourseRequest{
+		Name:         "Sample",
+		LectureHours: 1,
+		DivisionID:   seedDivision(t).ID,
+	}
+}
+
+func TestCoursesRequireAuth(t *testing.T) {
+	if rec := coursesRequest(t, http.MethodGet, "/api/v1/courses", nil, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET without a session: %d, want 401", rec.Code)
+	}
+}
+
+func TestCoursesOwnerLifecycle(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	session := login(t, owner.Username)
+	req := validCourseRequest(t, owner.ID)
+
+	rec := coursesRequest(t, http.MethodPost, "/api/v1/courses", session, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	var created models.CourseResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ID == 0 || created.CreatedAt.IsZero() {
+		t.Fatalf("create must return the stored row: %+v", created)
+	}
+	path := fmt.Sprintf("/api/v1/courses/%d", created.ID)
+
+	if rec := coursesRequest(t, http.MethodGet, path, session, nil); rec.Code != http.StatusOK {
+		t.Fatalf("show: %d %s", rec.Code, rec.Body)
+	}
+
+	req.Name = "Updated"
+	rec = coursesRequest(t, http.MethodPut, path, session, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", rec.Code, rec.Body)
+	}
+	var updated models.CourseResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != "Updated" {
+		t.Fatalf("the update did not persist: %+v", updated)
+	}
+
+	rec = coursesRequest(t, http.MethodGet, "/api/v1/courses", session, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body)
+	}
+	var listed models.CourseResponses
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(listed, func(x models.CourseResponse) bool { return x.ID == created.ID }) {
+		t.Fatalf("the list does not include the new course: %+v", listed)
+	}
+
+	if rec := coursesRequest(t, http.MethodDelete, path, session, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if rec := coursesRequest(t, http.MethodGet, path, session, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("show after delete: %d, want 404", rec.Code)
+	}
+}
+
+func TestCoursesStrangerGets404(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	owner := newUser(t, fmt.Sprintf("owner-%d", suffix))
+	stranger := newUser(t, fmt.Sprintf("stranger-%d", suffix))
+	strangerSession := login(t, stranger.Username)
+	course := seedCourse(t, owner.ID)
+	path := fmt.Sprintf("/api/v1/courses/%d", course.ID)
+
+	if rec := coursesRequest(t, http.MethodGet, path, strangerSession, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("stranger show: %d, want 404", rec.Code)
+	}
+	if rec := coursesRequest(t, http.MethodPut, path, strangerSession, validCourseRequest(t, stranger.ID)); rec.Code != http.StatusNotFound {
+		t.Errorf("stranger update: %d, want 404", rec.Code)
+	}
+	if rec := coursesRequest(t, http.MethodDelete, path, strangerSession, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("stranger delete: %d, want 404", rec.Code)
+	}
+	if rec := coursesRequest(t, http.MethodGet, path, login(t, owner.Username), nil); rec.Code != http.StatusOK {
+		t.Errorf("the owner's course must survive the stranger: %d", rec.Code)
+	}
+}
+
+func TestCoursesCreateValidation(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	rec := coursesRequest(t, http.MethodPost, "/api/v1/courses", login(t, owner.Username), map[string]any{})
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty body: %d, want 422; %s", rec.Code, rec.Body)
+	}
+}

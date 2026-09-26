@@ -1,0 +1,20 @@
+package controllers_test
+
+import (
+	"os"
+	"testing"
+
+	"example.com/shop/config"
+	"example.com/shop/config/components"
+	"github.com/go-raptor/raptor/v4"
+)
+
+var app *raptor.Raptor
+
+func TestMain(m *testing.M) {
+	// spa/v2 refuses to boot without a frontend build unless it is Optional, and components.New
+	// reads the flag, so set it first. Apps without the SPA controller ignore it.
+	os.Setenv("SPA_OPTIONAL", "true")
+	app = raptor.NewTestApp(components.New(), config.Routes())
+	os.Exit(m.Run())
+}

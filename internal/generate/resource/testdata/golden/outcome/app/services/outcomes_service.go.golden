@@ -1,0 +1,102 @@
+package services
+
+import (
+	"example.com/shop/app/models"
+	"github.com/go-raptor/raptor/v4"
+	"github.com/go-raptor/raptor/v4/errs"
+)
+
+type OutcomesService struct {
+	raptor.Service
+
+	DB      *DatabaseService
+	Courses *CoursesService // the immediate parent, injected by type like DB
+}
+
+// outcomesOwnedByUser scopes a outcome to its owner through its parent. Get, Update,
+// Delete and VerifyOwnership share it, so the ownership rule is written once.
+const outcomesOwnedByUser = `outcomes.course_id IN (SELECT id FROM courses WHERE user_id = ?)`
+
+// List is every outcome the user owns: the unfiltered index.
+func (s *OutcomesService) List(userID int64) (models.Outcomes, error) {
+	var outcomes models.Outcomes
+	err := s.DB.Conn().NewSelect().
+		Model(&outcomes).
+		Where(outcomesOwnedByUser, userID).
+		Order("outcomes.course_id", "outcomes.name", "outcomes.id").
+		Scan(s.DB.Ctx)
+	return outcomes, s.DB.HandleError(err)
+}
+
+// ListByCourse verifies the parent first: filtering alone could not tell "not your
+// course" from "a course with no outcomes", which are both zero rows.
+func (s *OutcomesService) ListByCourse(courseID, userID int64) (models.Outcomes, error) {
+	if err := s.Courses.VerifyOwnership(courseID, userID); err != nil {
+		return nil, err
+	}
+	var outcomes models.Outcomes
+	err := s.DB.Conn().NewSelect().
+		Model(&outcomes).
+		Where("outcomes.course_id = ?", courseID).
+		Order("outcomes.name", "outcomes.id").
+		Scan(s.DB.Ctx)
+	return outcomes, s.DB.HandleError(err)
+}
+
+func (s *OutcomesService) Get(id, userID int64) (*models.Outcome, error) {
+	outcome := new(models.Outcome)
+	err := s.DB.Conn().NewSelect().
+		Model(outcome).
+		Where("outcomes.id = ?", id).
+		Where(outcomesOwnedByUser, userID).
+		Scan(s.DB.Ctx)
+	return outcome, s.DB.HandleErrorNotFound(err, "Outcome not found")
+}
+
+func (s *OutcomesService) Create(outcome *models.Outcome, userID int64) error {
+	if err := s.Courses.VerifyOwnership(outcome.CourseID, userID); err != nil {
+		return err
+	}
+	_, err := s.DB.Conn().NewInsert().
+		Model(outcome).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleError(err)
+}
+
+func (s *OutcomesService) Update(outcome *models.Outcome, userID int64) error {
+	res, err := s.DB.Conn().NewUpdate().
+		Model(outcome).
+		Column(models.OutcomeUpdatableColumns...).
+		Where("outcomes.id = ?", outcome.ID).
+		Where(outcomesOwnedByUser, userID).
+		Returning("*").
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "Outcome not found")
+}
+
+func (s *OutcomesService) Delete(id, userID int64) error {
+	res, err := s.DB.Conn().NewDelete().
+		Model((*models.Outcome)(nil)).
+		Where("outcomes.id = ?", id).
+		Where(outcomesOwnedByUser, userID).
+		Exec(s.DB.Ctx)
+	return s.DB.HandleAffected(res, err, "Outcome not found")
+}
+
+// VerifyOwnership is what child services call before creating or listing under a
+// outcome. It uses the same predicate as Get.
+func (s *OutcomesService) VerifyOwnership(outcomeID, userID int64) error {
+	exists, err := s.DB.Conn().NewSelect().
+		Model((*models.Outcome)(nil)).
+		Where("outcomes.id = ?", outcomeID).
+		Where(outcomesOwnedByUser, userID).
+		Exists(s.DB.Ctx)
+	if err != nil {
+		return s.DB.HandleError(err)
+	}
+	if !exists {
+		return errs.NewErrorNotFound("Outcome not found")
+	}
+	return nil
+}

@@ -1,0 +1,103 @@
+package controllers
+
+import (
+	"net/http"
+
+	"example.com/shop/app/models"
+	"example.com/shop/app/services"
+	"github.com/go-raptor/raptor/v4"
+)
+
+type CoursesController struct {
+	raptor.Controller
+
+	Auth       *services.AuthService
+	Courses    *services.CoursesService
+	Validation *services.ValidationService
+}
+
+func (c *CoursesController) Index(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	courses, err := c.Courses.List(user.ID)
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.NewCourseResponses(courses))
+}
+
+func (c *CoursesController) Show(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	course, err := c.Courses.Get(id, user.ID)
+	if err != nil {
+		return err
+	}
+	return ctx.Data(models.NewCourseResponse(course))
+}
+
+func (c *CoursesController) Create(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	var req models.CourseRequest
+	if err := bindJSON(ctx, &req); err != nil {
+		return err
+	}
+	if issues := c.Validation.CourseSchema.Validate(&req); len(issues) > 0 {
+		return validationFailed(issues)
+	}
+	course := req.ToModel(user.ID)
+	if err := c.Courses.Create(course); err != nil {
+		return err
+	}
+	return ctx.Data(models.NewCourseResponse(course), http.StatusCreated)
+}
+
+func (c *CoursesController) Update(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	var req models.CourseRequest
+	if err := bindJSON(ctx, &req); err != nil {
+		return err
+	}
+	if issues := c.Validation.CourseSchema.Validate(&req); len(issues) > 0 {
+		return validationFailed(issues)
+	}
+	course := &models.Course{ID: id} // identity from the path, state from the body
+	req.ApplyTo(course)
+	if err := c.Courses.Update(course, user.ID); err != nil {
+		return err
+	}
+	return ctx.Data(models.NewCourseResponse(course))
+}
+
+func (c *CoursesController) Destroy(ctx *raptor.Context) error {
+	user, err := c.Auth.CurrentUser(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(ctx)
+	if err != nil {
+		return err
+	}
+	if err := c.Courses.Delete(id, user.ID); err != nil {
+		return err
+	}
+	return ctx.NoContent()
+}

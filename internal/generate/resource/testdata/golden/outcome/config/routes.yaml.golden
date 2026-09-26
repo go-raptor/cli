@@ -1,0 +1,19 @@
+routes:
+  /api/v1:
+    /auth:
+      /login:
+        POST: Auth.Login
+    /courses:
+      GET: Courses.Index
+      POST: Courses.Create
+      /{id}:
+        GET: Courses.Show
+        PUT: Courses.Update
+        DELETE: Courses.Destroy
+    /outcomes:
+      GET: Outcomes.Index
+      POST: Outcomes.Create
+      /{id}:
+        GET: Outcomes.Show
+        PUT: Outcomes.Update
+        DELETE: Outcomes.Destroy

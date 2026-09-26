@@ -1,0 +1,154 @@
+package controllers_test
+
+import (
+	"bytes"
+	"encoding/json/v2"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"testing"
+	"time"
+
+	"example.com/shop/app/models"
+	"github.com/go-raptor/raptor/v4"
+)
+
+// unitsRequest sends body as JSON, with the session cookie when there is one.
+func unitsRequest(t *testing.T, method, path string, session *http.Cookie, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reader = bytes.NewReader(encoded)
+	}
+	var opts []raptor.TestRequestOption
+	if session != nil {
+		opts = append(opts, withSession(session))
+	}
+	return app.TestRequest(method, path, reader, opts...)
+}
+
+// validUnitRequest is a request that passes validation, under a outcome owned by userID.
+func validUnitRequest(t *testing.T, userID int64) models.UnitRequest {
+	t.Helper()
+	return models.UnitRequest{
+		OutcomeID: seedOutcome(t, userID).ID,
+		Title:     "Sample",
+		Type:      string(models.UnitTypeLecture),
+		Active:    true,
+	}
+}
+
+func TestUnitsRequireAuth(t *testing.T) {
+	if rec := unitsRequest(t, http.MethodGet, "/api/v1/units", nil, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET without a session: %d, want 401", rec.Code)
+	}
+}
+
+func TestUnitsOwnerLifecycle(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	session := login(t, owner.Username)
+	req := validUnitRequest(t, owner.ID)
+
+	rec := unitsRequest(t, http.MethodPost, "/api/v1/units", session, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	var created models.UnitResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ID == 0 || created.CreatedAt.IsZero() {
+		t.Fatalf("create must return the stored row: %+v", created)
+	}
+	path := fmt.Sprintf("/api/v1/units/%d", created.ID)
+
+	if rec := unitsRequest(t, http.MethodGet, path, session, nil); rec.Code != http.StatusOK {
+		t.Fatalf("show: %d %s", rec.Code, rec.Body)
+	}
+
+	req.Title = "Updated"
+	rec = unitsRequest(t, http.MethodPut, path, session, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", rec.Code, rec.Body)
+	}
+	var updated models.UnitResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Title != "Updated" {
+		t.Fatalf("the update did not persist: %+v", updated)
+	}
+
+	rec = unitsRequest(t, http.MethodGet, "/api/v1/units", session, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body)
+	}
+	var listed models.UnitResponses
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(listed, func(x models.UnitResponse) bool { return x.ID == created.ID }) {
+		t.Fatalf("the list does not include the new unit: %+v", listed)
+	}
+
+	if rec := unitsRequest(t, http.MethodDelete, path, session, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if rec := unitsRequest(t, http.MethodGet, path, session, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("show after delete: %d, want 404", rec.Code)
+	}
+}
+
+func TestUnitsStrangerGets404(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	owner := newUser(t, fmt.Sprintf("owner-%d", suffix))
+	stranger := newUser(t, fmt.Sprintf("stranger-%d", suffix))
+	strangerSession := login(t, stranger.Username)
+	unit := seedUnit(t, owner.ID)
+	path := fmt.Sprintf("/api/v1/units/%d", unit.ID)
+
+	if rec := unitsRequest(t, http.MethodGet, path, strangerSession, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("stranger show: %d, want 404", rec.Code)
+	}
+	if rec := unitsRequest(t, http.MethodPut, path, strangerSession, validUnitRequest(t, stranger.ID)); rec.Code != http.StatusNotFound {
+		t.Errorf("stranger update: %d, want 404", rec.Code)
+	}
+	if rec := unitsRequest(t, http.MethodDelete, path, strangerSession, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("stranger delete: %d, want 404", rec.Code)
+	}
+	if rec := unitsRequest(t, http.MethodGet, path, login(t, owner.Username), nil); rec.Code != http.StatusOK {
+		t.Errorf("the owner's unit must survive the stranger: %d", rec.Code)
+	}
+}
+
+func TestUnitsCreateValidation(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	rec := unitsRequest(t, http.MethodPost, "/api/v1/units", login(t, owner.Username), map[string]any{})
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty body: %d, want 422; %s", rec.Code, rec.Body)
+	}
+}
+
+func TestUnitsUnderStrangersOutcome(t *testing.T) {
+	suffix := time.Now().UnixNano()
+	owner := newUser(t, fmt.Sprintf("owner-%d", suffix))
+	stranger := newUser(t, fmt.Sprintf("stranger-%d", suffix))
+	session := login(t, owner.Username)
+	strangersOutcome := seedOutcome(t, stranger.ID)
+
+	req := validUnitRequest(t, owner.ID)
+	req.OutcomeID = strangersOutcome.ID
+	if rec := unitsRequest(t, http.MethodPost, "/api/v1/units", session, req); rec.Code != http.StatusNotFound {
+		t.Errorf("create under the stranger's outcome: %d, want 404", rec.Code)
+	}
+	list := fmt.Sprintf("/api/v1/units?outcomeId=%d", strangersOutcome.ID)
+	if rec := unitsRequest(t, http.MethodGet, list, session, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("list under the stranger's outcome: %d, want 404", rec.Code)
+	}
+}
