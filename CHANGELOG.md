@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (v1.3.0)
+
+### Added
+
+- `raptor g resource <Name> [field:type ...] [--parent Model] [--movable] [--plural Name]` scaffolds a complete entity (model, DTOs, zog schema, service with ownership checks, controller, routes, migration and integration tests), bootstrapping the shared services, helpers and test harness on first use. See the README.
+
 ## v1.2.0 — 2026-09-25
 
 ### Changed
