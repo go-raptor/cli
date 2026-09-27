@@ -36,3 +36,11 @@ Adds a new greeting to the list.
 ```
 
 **Response:** `201 Created`
+{{- if not .SPA}}
+
+## Frontend
+
+The API is same-origin: there is no CORS, and the csrf middleware rejects cross-origin writes from browsers while letting other clients through. `raptor new <module> --spa` generates a project that also serves a single-page frontend from `public/` on the same origin.
+
+A frontend that must live on another origin needs the `cors` middleware (`github.com/go-raptor/middlewares/cors`) registered in `config/components/middlewares.go`, its origin in `app.cors_allow_origins`, and the same origin in `app.csrf_trusted_origins`.
+{{- end}}

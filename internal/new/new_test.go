@@ -85,6 +85,37 @@ func TestTemplateRendersInBothVariants(t *testing.T) {
 	}
 }
 
+// appConfig is the app: mapping of a generated config file.
+func appConfig(t *testing.T, dir, name string) map[string]string {
+	t.Helper()
+	var cfg struct {
+		App map[string]string `yaml:"app"`
+	}
+	if err := yaml.Unmarshal([]byte(readFile(t, dir, name)), &cfg); err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return cfg.App
+}
+
+// Neither variant opens the API to other origins: csrf protects writes, and nothing registers
+// cors or lists cors_allow_origins.
+func TestNoVariantIsCrossOrigin(t *testing.T) {
+	for variant, dir := range variants(t) {
+		mw := readFile(t, dir, "config/components/middlewares.go")
+		if !strings.Contains(mw, "raptor.Use(&csrf.CSRFMiddleware{})") {
+			t.Errorf("%s: middlewares.go does not register csrf:\n%s", variant, mw)
+		}
+		if strings.Contains(mw, "middlewares/cors") {
+			t.Errorf("%s: middlewares.go registers cors:\n%s", variant, mw)
+		}
+		for _, name := range []string{".raptor.dev.yaml", ".raptor.test.yaml"} {
+			if _, ok := appConfig(t, dir, name)["cors_allow_origins"]; ok {
+				t.Errorf("%s: %s sets cors_allow_origins", variant, name)
+			}
+		}
+	}
+}
+
 func TestNewProjectKeepsBodyLimit(t *testing.T) {
 	disabled := regexp.MustCompile(`(?m)^\s*max_body_bytes:\s*0\s*$`)
 	for variant, dir := range variants(t) {
