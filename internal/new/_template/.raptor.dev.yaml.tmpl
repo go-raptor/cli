@@ -16,7 +16,7 @@ server:
 {{- if .SPA}}
 
 app:
-  # Boot without a frontend build in public/. Raptor reads this file on every run where it
-  # exists, so production must not have it on disk.
+  # Boot without a frontend build in public/. This file is for development only: production is
+  # configured with .raptor.prod.yaml or environment variables, which leave this unset.
   spa_optional: "true"
 {{- end}}

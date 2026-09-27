@@ -16,6 +16,6 @@ server:
 {{- if .SPA}}
 
 app:
-  # Boot without a frontend build in public/. Never set this in a config production loads.
+  # Boot without a frontend build in public/, which tests never have.
   spa_optional: "true"
 {{- end}}
