@@ -1,14 +1,17 @@
 package new
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
+	"go/format"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"text/template"
 
 	"github.com/spf13/cobra"
 )
@@ -42,7 +45,7 @@ func newProject(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if err := copyTemplateFiles(projectDir, moduleName); err != nil {
+	if err := copyTemplateFiles(projectDir, moduleName, templateData{}); err != nil {
 		fmt.Printf("Error creating project: %v\n", err)
 		os.Exit(1)
 	}
@@ -64,7 +67,12 @@ func newProject(cmd *cobra.Command, args []string) {
 	fmt.Println("  raptor dev")
 }
 
-func copyTemplateFiles(projectDir, moduleName string) error {
+// templateData is what the *.tmpl files in _template are rendered with.
+type templateData struct {
+	SPA bool // serve a frontend build from public/ with controllers/spa
+}
+
+func copyTemplateFiles(projectDir, moduleName string, data templateData) error {
 	return fs.WalkDir(templateFS, "_template", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -87,11 +95,39 @@ func copyTemplateFiles(projectDir, moduleName string) error {
 			return err
 		}
 
-		// Replace template module name with the actual module name
-		output := strings.ReplaceAll(string(content), templateModule, moduleName)
+		// A .tmpl file differs between variants: render it, and drop the suffix
+		if name, ok := strings.CutSuffix(targetPath, ".tmpl"); ok {
+			if content, err = render(path, content, data); err != nil {
+				return err
+			}
+			targetPath = name
+		}
 
-		return os.WriteFile(targetPath, []byte(output), 0644)
+		// Replace template module name with the actual module name
+		output := []byte(strings.ReplaceAll(string(content), templateModule, moduleName))
+
+		// The new module path reorders imports, and a rendered conditional can leave a blank line
+		if strings.HasSuffix(targetPath, ".go") {
+			if output, err = format.Source(output); err != nil {
+				return fmt.Errorf("formatting %s: %w", relPath, err)
+			}
+		}
+
+		return os.WriteFile(targetPath, output, 0644)
 	})
+}
+
+// render executes one .tmpl file of the template with data.
+func render(name string, content []byte, data templateData) ([]byte, error) {
+	tmpl, err := template.New(name).Parse(string(content))
+	if err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, data); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 func writeGoMod(projectDir, moduleName string) error {
