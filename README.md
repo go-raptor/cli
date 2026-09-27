@@ -12,6 +12,22 @@ To install the Raptor CLI you can run the following command:
 go install github.com/go-raptor/cli/cmd/raptor@latest
 ```
 
+## Creating a project
+
+```bash
+raptor new github.com/you/shop
+```
+
+creates an API-only project in `shop/`. It is same-origin: there is no CORS, and the csrf middleware (`github.com/go-raptor/middlewares/csrf`) rejects cross-origin writes from browsers while letting other clients through.
+
+`--spa` also serves a single-page frontend (a SvelteKit `adapter-static` build, or any equivalent) from `public/` with `controllers/spa`, on the same origin:
+
+- `SPA.Index` is routed on `/`, and `/api/v1/{path...}` keeps Raptor's JSON 404.
+- `.raptor.dev.yaml` and `.raptor.test.yaml` set `spa_optional: "true"`, so the project boots and its tests pass before a frontend is built. Production must not load it.
+- The generated README shows the Vite proxy for development: `http://localhost:3000` in its object form, so csrf sees the original `Host`.
+
+A frontend that must live on another origin needs the `cors` middleware registered, its origin in `app.cors_allow_origins`, and the same origin in `app.csrf_trusted_origins`.
+
 ## Generated configuration
 
 - **Request body limit.** New projects keep Raptor's 8 MB request body limit. Raise `server.max_body_bytes` only if you accept uploads, and still check each file's size in the upload endpoint.

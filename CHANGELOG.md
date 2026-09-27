@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Behavior:** `raptor new` no longer registers the `cors` middleware or sets `cors_allow_origins: "http://localhost:5173"`, a cross-origin development setup. New projects are same-origin and register the `csrf` middleware instead. Proxy the frontend's dev server to the API (see the README), or add `cors` back for a frontend that must live on another origin.
+- Generated Go files are gofmt-clean: imports are sorted after the module path is filled in.
+
+### Added
+
+- `raptor new --spa` serves a single-page frontend from `public/` with `controllers/spa`. It adds the `SPA.Index` catch-all route, `spa_optional` in `.raptor.dev.yaml` and `.raptor.test.yaml`, `/public/` in `.gitignore`, and README instructions for the Vite proxy and production.
+
 ## v1.3.1 — 2026-09-26
 
 ### Fixed
