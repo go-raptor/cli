@@ -48,7 +48,7 @@ raptor new <module> [--spa]
 
 - `--spa`: "serve a single-page frontend from public/ with controllers/spa".
 - The closing "Get started" output stays `cd <dir>` and `raptor dev`.
-- With `--spa`, it adds one line: `Frontend: proxy /api to http://127.0.0.1:3000 in vite.config.ts, and copy its build into public/ for production (see README.md).`
+- With `--spa`, it adds one line: `Frontend: proxy /api to http://localhost:3000 in vite.config.ts, and copy its build into public/ for production (see README.md).`
 
 ## What each variant generates
 
@@ -128,11 +128,11 @@ app:
 server: {
   // The object form: the string form turns on changeOrigin, which rewrites Host, and csrf
   // then rejects every write.
-  proxy: { "/api": { target: "http://127.0.0.1:3000" } },
+  proxy: { "/api": { target: "http://localhost:3000" } },
 },
 ```
 
-The target is `127.0.0.1`, not `localhost`: Node 17 and later try `::1` first for `localhost`, and the Go server listens on IPv4.
+The target is `http://localhost:3000`, the address `.raptor.dev.yaml` gives the server.
 
 *Production:*
 - Copy SvelteKit's `build/` into `public/`, for example `COPY --from=frontend /app/build ./public` in a Dockerfile.
@@ -144,6 +144,7 @@ The target is `127.0.0.1`, not `localhost`: Node 17 and later try `::1` first fo
 - Files named `*.tmpl` under `_template/` are rendered with `text/template` and written without the suffix. Every other file is copied verbatim, as today.
 - The data is `struct{ SPA bool }`.
 - The existing module-path replacement (`github.com/go-raptor/template` → the new module) runs after rendering.
+- Every generated `.go` file then goes through `go/format`. That keeps imports sorted once the new module path replaces the placeholder, and removes any blank line a conditional leaves in an import block.
 - The files that become templates, and only those, are:
   - `config/components/controllers.go.tmpl`
   - `config/routes.yaml.tmpl`
@@ -213,5 +214,6 @@ The `--spa` run proves the whole chain: the SPA controller boots with no `public
 
 - **Muscle memory.** Anyone who used `raptor new` with Vite on 5173 calling the API directly now gets CORS errors. The CHANGELOG and both READMEs point to the Vite proxy, or to adding `cors`.
 - **A proxy that rewrites `Host` breaks writes under `csrf`.** The README's Vite snippet uses the object form, with the reason in a comment.
+- **`localhost` may resolve to `::1` first.** The Go server listens on IPv4 only. Node 20 and later try both address families, so the proxy connects; an older runtime reports `ECONNREFUSED ::1:3000`, and `127.0.0.1` is the fix.
 - **Literal `{{` in a future template edit breaks rendering.** The render tests fail on it before release.
 - **`go mod tidy` also resolves `csrf`,** plus `controllers/spa` with `--spa`, from the network. That's the same dependence `raptor new` already has on `raptor/v4`.
