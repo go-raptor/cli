@@ -29,6 +29,12 @@ var Cmd = &cobra.Command{
 	Run:   newProject,
 }
 
+var spa bool
+
+func init() {
+	Cmd.Flags().BoolVar(&spa, "spa", false, "serve a single-page frontend from public/ with controllers/spa")
+}
+
 func newProject(cmd *cobra.Command, args []string) {
 	moduleName := args[0]
 	projectDir := moduleName[strings.LastIndex(moduleName, "/")+1:]
@@ -45,7 +51,7 @@ func newProject(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if err := copyTemplateFiles(projectDir, moduleName, templateData{}); err != nil {
+	if err := copyTemplateFiles(projectDir, moduleName, templateData{SPA: spa}); err != nil {
 		fmt.Printf("Error creating project: %v\n", err)
 		os.Exit(1)
 	}
@@ -65,6 +71,9 @@ func newProject(cmd *cobra.Command, args []string) {
 	fmt.Println("Get started:")
 	fmt.Printf("  cd %s\n", projectDir)
 	fmt.Println("  raptor dev")
+	if spa {
+		fmt.Println("\nFrontend: proxy /api to http://localhost:3000 in vite.config.ts, and copy its build into public/ for production (see README.md).")
+	}
 }
 
 // templateData is what the *.tmpl files in _template are rendered with.

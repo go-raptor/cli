@@ -3,3 +3,7 @@ routes:
     /hello:
       GET: Hello.Greet
       POST: Hello.AddGreetings
+{{- if .SPA}}
+    /{path...}: Errors.NotFound
+  /: SPA.Index
+{{- end}}

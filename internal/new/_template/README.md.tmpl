@@ -36,7 +36,31 @@ Adds a new greeting to the list.
 ```
 
 **Response:** `201 Created`
-{{- if not .SPA}}
+{{- if .SPA}}
+
+## Frontend
+
+The server also serves a single-page frontend (a SvelteKit `adapter-static` build, or any equivalent) from `public/`, on the same origin as the API. There is no CORS; the csrf middleware rejects cross-origin writes from browsers.
+
+### Development
+
+Run `raptor dev`, then the frontend's dev server, and open the frontend's URL. Vite proxies `/api` to the Go server:
+
+```ts
+// vite.config.ts
+server: {
+  // The object form: the string form turns on changeOrigin, which rewrites Host, and csrf
+  // then rejects every write.
+  proxy: { "/api": { target: "http://localhost:3000" } },
+},
+```
+
+`.raptor.dev.yaml` and `.raptor.test.yaml` set `spa_optional: "true"`, so the server boots and the tests pass before any frontend is built; every page returns 404 until one is.
+
+### Production
+
+Copy the frontend build into `public/`, for example `COPY --from=frontend /app/build ./public` in a Dockerfile. Production must not load `spa_optional`: a missing build then fails at startup instead of serving 404s. The build is read into memory at boot, so a new build needs a restart.
+{{- else}}
 
 ## Frontend
 

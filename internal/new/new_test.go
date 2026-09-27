@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -113,6 +114,54 @@ func TestNoVariantIsCrossOrigin(t *testing.T) {
 				t.Errorf("%s: %s sets cors_allow_origins", variant, name)
 			}
 		}
+	}
+}
+
+// routes is config/routes.yaml as the router reads it.
+func routes(t *testing.T, dir string) map[string]any {
+	t.Helper()
+	var r struct {
+		Routes map[string]any `yaml:"routes"`
+	}
+	if err := yaml.Unmarshal([]byte(readFile(t, dir, "config/routes.yaml")), &r); err != nil {
+		t.Fatal(err)
+	}
+	return r.Routes
+}
+
+// --spa wires controllers/spa exactly as its README routes it, relaxes it only where there is no
+// build (development and tests), and keeps the build out of git. The API-only default has none
+// of it.
+func TestSPAVariantServesTheFrontend(t *testing.T) {
+	dirs := variants(t)
+	for variant, want := range map[string]bool{"api": false, "spa": true} {
+		dir := dirs[variant]
+		controllers := readFile(t, dir, "config/components/controllers.go")
+		if got := strings.Contains(controllers, "&spa.SPAController{}"); got != want {
+			t.Errorf("%s: registers SPAController = %v, want %v:\n%s", variant, got, want, controllers)
+		}
+		r := routes(t, dir)
+		api, _ := r["/api/v1"].(map[string]any)
+		if got := r["/"] == "SPA.Index" && api["/{path...}"] == "Errors.NotFound"; got != want {
+			t.Errorf("%s: routes / to SPA.Index and keeps the JSON 404 for /api/v1 = %v, want %v: %v", variant, got, want, r)
+		}
+		if api["/hello"] == nil {
+			t.Errorf("%s: lost the /api/v1/hello routes: %v", variant, r)
+		}
+		for _, name := range []string{".raptor.dev.yaml", ".raptor.test.yaml"} {
+			if got := appConfig(t, dir, name)["spa_optional"] == "true"; got != want {
+				t.Errorf("%s: %s sets spa_optional \"true\" = %v, want %v", variant, name, got, want)
+			}
+		}
+		if got := slices.Contains(strings.Split(readFile(t, dir, ".gitignore"), "\n"), "/public/"); got != want {
+			t.Errorf("%s: .gitignore ignores /public/ = %v, want %v", variant, got, want)
+		}
+	}
+}
+
+func TestSPAIsAnOptInFlag(t *testing.T) {
+	if f := Cmd.Flags().Lookup("spa"); f == nil || f.DefValue != "false" {
+		t.Fatalf("--spa must be a flag that defaults to off, got %+v", f)
 	}
 }
 

@@ -1,6 +1,9 @@
 package components
 
 import (
+{{- if .SPA}}
+	"github.com/go-raptor/controllers/spa/v2"
+{{- end}}
 	"github.com/go-raptor/raptor/v4"
 	"github.com/go-raptor/template/app/controllers"
 )
@@ -8,5 +11,9 @@ import (
 func Controllers() raptor.Controllers {
 	return raptor.Controllers{
 		&controllers.HelloController{},
+{{- if .SPA}}
+		// Serves the frontend build in public/; see README.md.
+		&spa.SPAController{},
+{{- end}}
 	}
 }
