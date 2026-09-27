@@ -4,7 +4,7 @@
 
 ### Changed
 
-- **Behavior:** `raptor new` no longer registers the `cors` middleware or sets `cors_allow_origins: "http://localhost:5173"`, a cross-origin development setup. New projects are same-origin and register the `csrf` middleware instead. Proxy the frontend's dev server to the API (see the README), or add `cors` back for a frontend that must live on another origin.
+- **Behavior:** `raptor new` no longer registers the `cors` middleware or sets `cors_allow_origins: "http://localhost:5173"`, a cross-origin development setup. New projects are same-origin and register the `csrf` middleware instead. Proxy the frontend's dev server to the API (the README's *Creating a project* shows the Vite config), or add `cors` back for a frontend that must live on another origin.
 - Generated Go files are gofmt-clean: imports are sorted after the module path is filled in.
 
 ### Added

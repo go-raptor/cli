@@ -59,7 +59,7 @@ server: {
 
 ### Production
 
-Copy the frontend build into `public/`, for example `COPY --from=frontend /app/build ./public` in a Dockerfile. Production must not load `spa_optional`: a missing build then fails at startup instead of serving 404s. The build is read into memory at boot, so a new build needs a restart.
+Copy the frontend build into `public/`, for example `COPY --from=frontend /app/build ./public` in a Dockerfile. Production must not load `spa_optional`: a missing build then fails at startup instead of serving 404s. Raptor reads `.raptor.dev.yaml` on every run where it exists, so production must not have that file on disk; ship only the binary and `public/`, as a Docker image does. The build is read into memory at boot, so a new build needs a restart.
 {{- else}}
 
 ## Frontend

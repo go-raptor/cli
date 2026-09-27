@@ -23,8 +23,17 @@ creates an API-only project in `shop/`. It is same-origin: there is no CORS, and
 `--spa` also serves a single-page frontend (a SvelteKit `adapter-static` build, or any equivalent) from `public/` with `controllers/spa`, on the same origin:
 
 - `SPA.Index` is routed on `/`, and `/api/v1/{path...}` keeps Raptor's JSON 404.
-- `.raptor.dev.yaml` and `.raptor.test.yaml` set `spa_optional: "true"`, so the project boots and its tests pass before a frontend is built. Production must not load it.
-- The generated README shows the Vite proxy for development: `http://localhost:3000` in its object form, so csrf sees the original `Host`.
+- `.raptor.dev.yaml` and `.raptor.test.yaml` set `spa_optional: "true"`, so the project boots and its tests pass before a frontend is built. Raptor reads `.raptor.dev.yaml` on every run where it exists, so production must not have that file on disk.
+- The generated README covers development and production.
+
+In development, either kind of project stays same-origin when the frontend's dev server proxies `/api` to it. With Vite, use the object form, so csrf sees the original `Host`:
+
+```ts
+// vite.config.ts
+server: {
+  proxy: { "/api": { target: "http://localhost:3000" } },
+},
+```
 
 A frontend that must live on another origin needs the `cors` middleware registered, its origin in `app.cors_allow_origins`, and the same origin in `app.csrf_trusted_origins`.
 
