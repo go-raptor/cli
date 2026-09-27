@@ -46,24 +46,8 @@ func newProject(cmd *cobra.Command, args []string) {
 
 	fmt.Printf("Creating new 🦖 Raptor project: %s\n", projectDir)
 
-	if err := os.MkdirAll(projectDir, 0755); err != nil {
-		fmt.Printf("Error creating project directory: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := copyTemplateFiles(projectDir, moduleName, templateData{SPA: spa}); err != nil {
-		fmt.Printf("Error creating project: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := writeGoMod(projectDir, moduleName); err != nil {
-		fmt.Printf("Error creating go.mod: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Println("Resolving dependencies... 📦")
-	if err := runInDir(projectDir, "go", "mod", "tidy"); err != nil {
-		fmt.Printf("Error resolving dependencies: %v\n", err)
+	if err := createProject(projectDir, moduleName, templateData{SPA: spa}); err != nil {
+		fmt.Printf("Error %v\n", err)
 		os.Exit(1)
 	}
 
@@ -74,6 +58,28 @@ func newProject(cmd *cobra.Command, args []string) {
 	if spa {
 		fmt.Println("\nFrontend: proxy /api to http://localhost:3000 in vite.config.ts, and copy its build into public/ for production (see README.md).")
 	}
+}
+
+// createProject writes the template into projectDir with a go.mod, and resolves its
+// dependencies.
+func createProject(projectDir, moduleName string, data templateData) error {
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		return fmt.Errorf("creating project directory: %w", err)
+	}
+
+	if err := copyTemplateFiles(projectDir, moduleName, data); err != nil {
+		return fmt.Errorf("creating project: %w", err)
+	}
+
+	if err := writeGoMod(projectDir, moduleName); err != nil {
+		return fmt.Errorf("creating go.mod: %w", err)
+	}
+
+	fmt.Println("Resolving dependencies... 📦")
+	if err := runInDir(projectDir, "go", "mod", "tidy"); err != nil {
+		return fmt.Errorf("resolving dependencies: %w", err)
+	}
+	return nil
 }
 
 // templateData is what the *.tmpl files in _template are rendered with.

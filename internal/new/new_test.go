@@ -5,6 +5,7 @@ import (
 	"go/format"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -162,6 +163,43 @@ func TestSPAVariantServesTheFrontend(t *testing.T) {
 func TestSPAIsAnOptInFlag(t *testing.T) {
 	if f := Cmd.Flags().Lookup("spa"); f == nil || f.DefValue != "false" {
 		t.Fatalf("--spa must be a flag that defaults to off, got %+v", f)
+	}
+}
+
+// Each variant, generated for real, vets and passes its own tests. For --spa that boots the SPA
+// controller with no public/, through spa_optional in .raptor.test.yaml, and keeps the template's
+// JSON 404 for an unknown API path. It needs the module proxy, so it skips under -short or offline.
+func TestGeneratedProjectsPassTheirTests(t *testing.T) {
+	if testing.Short() {
+		t.Skip("generates, downloads and tests whole projects")
+	}
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "APP_") { // a developer's app config must not leak into the generated tests
+			env = append(env, kv)
+		}
+	}
+	env = append(env, "GOWORK=off")
+	// Probe with a module the template doesn't author, so a failure below is the template's own.
+	probe := exec.Command("go", "list", "-m", "github.com/go-raptor/middlewares/csrf@latest")
+	probe.Dir, probe.Env = t.TempDir(), env
+	if out, err := probe.CombinedOutput(); err != nil {
+		t.Skipf("the module proxy is unreachable (offline?): %v\n%s", err, out)
+	}
+	for variant, data := range map[string]templateData{"api": {}, "spa": {SPA: true}} {
+		t.Run(variant, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "shop")
+			if err := createProject(dir, "example.com/shop", data); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{"vet", "./..."}, {"test", "-count=1", "./..."}} {
+				cmd := exec.Command("go", args...)
+				cmd.Dir, cmd.Env = dir, env
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err, out)
+				}
+			}
+		})
 	}
 }
 
