@@ -298,8 +298,9 @@ func TestDecideSkipsIntegrationTests(t *testing.T) {
 	}
 }
 
-// harness is a controllers_test file declaring the five helpers the generated tests call, with
-// the spec's signatures but other parameter names. overrides replaces a helper's declaration, or
+// harness is a controllers_test file declaring the helpers the generated tests call, plus the
+// withSession that harnesses before CLI v1.5.0 declared, with the spec's signatures but other
+// parameter names. overrides replaces a helper's declaration, or
 // with "" leaves it out.
 func harness(overrides map[string]string) string {
 	decls := []struct{ name, decl string }{
@@ -322,15 +323,24 @@ func harness(overrides map[string]string) string {
 }
 
 // Finding I-5: a harness with the spec's signatures is reused, whatever its parameter names.
+// withSession is optional: the generated tests send the cookie with raptor.WithCookie, and a
+// harness from before CLI v1.5.0 still declares it.
 func TestDecideReusesAMatchingHarness(t *testing.T) {
-	copyFixture(t)
-	writeFile(t, "app/controllers/harness_test.go", harness(nil))
-	d, err := decideFor(t, "Course", nil, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !d.Tests || d.Harness {
-		t.Fatalf("the harness should be reused: %+v", d)
+	for name, overrides := range map[string]map[string]string{
+		"with withSession":    nil,
+		"without withSession": {"withSession": ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			copyFixture(t)
+			writeFile(t, "app/controllers/harness_test.go", harness(overrides))
+			d, err := decideFor(t, "Course", nil, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !d.Tests || d.Harness {
+				t.Fatalf("the harness should be reused: %+v", d)
+			}
+		})
 	}
 }
 

@@ -1,8 +1,6 @@
 package controllers_test
 
 import (
-	"bytes"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,15 +18,11 @@ func recordsRequest(t *testing.T, method, path string, session *http.Cookie, bod
 	t.Helper()
 	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		reader = bytes.NewReader(encoded)
+		reader = raptor.JSONBody(t, body)
 	}
 	var opts []raptor.TestRequestOption
 	if session != nil {
-		opts = append(opts, withSession(session))
+		opts = append(opts, raptor.WithCookie(session))
 	}
 	return app.TestRequest(method, path, reader, opts...)
 }
@@ -54,13 +48,7 @@ func TestRecordsOwnerLifecycle(t *testing.T) {
 	req := validRecordRequest(t, owner.ID)
 
 	rec := recordsRequest(t, http.MethodPost, "/api/v1/records", session, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create: %d %s", rec.Code, rec.Body)
-	}
-	var created models.RecordResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
+	created := raptor.DecodeJSON[models.RecordResponse](t, rec, http.StatusCreated)
 	if created.ID == 0 || created.CreatedAt.IsZero() {
 		t.Fatalf("create must return the stored row: %+v", created)
 	}
@@ -75,13 +63,7 @@ func TestRecordsOwnerLifecycle(t *testing.T) {
 	}
 
 	rec = recordsRequest(t, http.MethodGet, "/api/v1/records", session, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list: %d %s", rec.Code, rec.Body)
-	}
-	var listed models.RecordResponses
-	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil {
-		t.Fatal(err)
-	}
+	listed := raptor.DecodeJSON[models.RecordResponses](t, rec, http.StatusOK)
 	if !slices.ContainsFunc(listed, func(x models.RecordResponse) bool { return x.ID == created.ID }) {
 		t.Fatalf("the list does not include the new record: %+v", listed)
 	}
@@ -161,25 +143,13 @@ func TestRecordsParentIsImmutable(t *testing.T) {
 	req.UnitID = otherUnit.ID
 	path := fmt.Sprintf("/api/v1/records/%d", record.ID)
 	rec := recordsRequest(t, http.MethodPut, path, session, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("update: %d %s", rec.Code, rec.Body)
-	}
-	var updated models.RecordResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
-		t.Fatal(err)
-	}
+	updated := raptor.DecodeJSON[models.RecordResponse](t, rec, http.StatusOK)
 	if updated.UnitID != record.UnitID {
 		t.Errorf("the unit must not change: UnitID = %v, want %v", updated.UnitID, record.UnitID)
 	}
 
 	rec = recordsRequest(t, http.MethodGet, path, session, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("show: %d %s", rec.Code, rec.Body)
-	}
-	var current models.RecordResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
-		t.Fatal(err)
-	}
+	current := raptor.DecodeJSON[models.RecordResponse](t, rec, http.StatusOK)
 	if current.UnitID != record.UnitID {
 		t.Errorf("the unit must not change: UnitID = %v, want %v", current.UnitID, record.UnitID)
 	}

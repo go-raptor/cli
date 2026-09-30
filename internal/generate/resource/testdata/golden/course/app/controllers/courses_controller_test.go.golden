@@ -1,8 +1,6 @@
 package controllers_test
 
 import (
-	"bytes"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,15 +18,11 @@ func coursesRequest(t *testing.T, method, path string, session *http.Cookie, bod
 	t.Helper()
 	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		reader = bytes.NewReader(encoded)
+		reader = raptor.JSONBody(t, body)
 	}
 	var opts []raptor.TestRequestOption
 	if session != nil {
-		opts = append(opts, withSession(session))
+		opts = append(opts, raptor.WithCookie(session))
 	}
 	return app.TestRequest(method, path, reader, opts...)
 }
@@ -55,13 +49,7 @@ func TestCoursesOwnerLifecycle(t *testing.T) {
 	req := validCourseRequest(t, owner.ID)
 
 	rec := coursesRequest(t, http.MethodPost, "/api/v1/courses", session, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create: %d %s", rec.Code, rec.Body)
-	}
-	var created models.CourseResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
+	created := raptor.DecodeJSON[models.CourseResponse](t, rec, http.StatusCreated)
 	if created.ID == 0 || created.CreatedAt.IsZero() {
 		t.Fatalf("create must return the stored row: %+v", created)
 	}
@@ -76,22 +64,13 @@ func TestCoursesOwnerLifecycle(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update: %d %s", rec.Code, rec.Body)
 	}
-	var updated models.CourseResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
-		t.Fatal(err)
-	}
+	updated := raptor.DecodeJSON[models.CourseResponse](t, rec, http.StatusOK)
 	if updated.Name != "Updated" {
 		t.Fatalf("the update did not persist: %+v", updated)
 	}
 
 	rec = coursesRequest(t, http.MethodGet, "/api/v1/courses", session, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list: %d %s", rec.Code, rec.Body)
-	}
-	var listed models.CourseResponses
-	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil {
-		t.Fatal(err)
-	}
+	listed := raptor.DecodeJSON[models.CourseResponses](t, rec, http.StatusOK)
 	if !slices.ContainsFunc(listed, func(x models.CourseResponse) bool { return x.ID == created.ID }) {
 		t.Fatalf("the list does not include the new course: %+v", listed)
 	}

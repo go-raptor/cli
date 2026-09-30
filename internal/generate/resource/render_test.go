@@ -230,13 +230,15 @@ func TestRenderBootstrapFiles(t *testing.T) {
 			"t.Cleanup(func() { _, _ = db(t).NewDelete().Model((*models.User)(nil)).Where(\"id = ?\", user.ID).Exec(context.Background()) })",
 			"return raptor.WithRemoteAddr(fmt.Sprintf(\"10.%d.%d.%d\", byte(n>>16), byte(n>>8), byte(n)))",
 			"func login(t *testing.T, username string) *http.Cookie {",
-			"func withSession(c *http.Cookie) raptor.TestRequestOption {",
 		},
 	} {
 		src := mustRender(t, tmpl, v)
 		for _, want := range wants {
 			loose(t, src, want)
 		}
+	}
+	if strings.Contains(mustRender(t, "harness_test.go.tmpl", v), "withSession") {
+		t.Error("the harness still defines withSession; the tests use raptor.WithCookie")
 	}
 	// ctx.Bind and ctx.ParamInt64 (raptor v4.6.0) replaced these.
 	helpers := mustRender(t, "helpers.go.tmpl", v)
@@ -294,6 +296,10 @@ func TestRenderControllerTests(t *testing.T) {
 		"func TestSeminarsStrangerGets404(t *testing.T) {",
 		"seminar := seedSeminar(t, owner.ID)",
 		"func TestSeminarsCreateValidation(t *testing.T) {",
+		"reader = raptor.JSONBody(t, body)",
+		"opts = append(opts, raptor.WithCookie(session))",
+		"created := raptor.DecodeJSON[models.SeminarResponse](t, rec, http.StatusCreated)",
+		"listed := raptor.DecodeJSON[models.SeminarResponses](t, rec, http.StatusOK)",
 	} {
 		loose(t, flat, want)
 	}
@@ -307,6 +313,7 @@ func TestRenderControllerTests(t *testing.T) {
 		"func TestTopicsUnderStrangersCourse(t *testing.T) {",
 		"req.CourseID = strangersCourse.ID",
 		"list := fmt.Sprintf(\"/api/v1/topics?courseId=%d\", strangersCourse.ID)",
+		"func TestTopicsMalformedCourseFilter(t *testing.T) {",
 	} {
 		loose(t, child, want)
 	}

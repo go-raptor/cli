@@ -73,7 +73,3 @@ func login(t *testing.T, username string) *http.Cookie {
 	t.Fatal("login set no session cookie")
 	return nil
 }
-
-func withSession(c *http.Cookie) raptor.TestRequestOption {
-	return raptor.WithHeader("Cookie", c.Name+"="+c.Value)
-}

@@ -227,7 +227,6 @@ var harnessHelpers = []struct{ name, sig string }{
 	{"mustInsert", "func(*testing.T, *bun.InsertQuery)"},
 	{"newUser", "func(*testing.T, string) *models.User"},
 	{"login", "func(*testing.T, string) *http.Cookie"},
-	{"withSession", "func(*http.Cookie) raptor.TestRequestOption"},
 }
 
 // raptorModule is at least minRaptor in a project the generator writes to: the generated code

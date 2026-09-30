@@ -1,8 +1,6 @@
 package controllers_test
 
 import (
-	"bytes"
-	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,15 +18,11 @@ func outcomesRequest(t *testing.T, method, path string, session *http.Cookie, bo
 	t.Helper()
 	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		reader = bytes.NewReader(encoded)
+		reader = raptor.JSONBody(t, body)
 	}
 	var opts []raptor.TestRequestOption
 	if session != nil {
-		opts = append(opts, withSession(session))
+		opts = append(opts, raptor.WithCookie(session))
 	}
 	return app.TestRequest(method, path, reader, opts...)
 }
@@ -56,13 +50,7 @@ func TestOutcomesOwnerLifecycle(t *testing.T) {
 	req := validOutcomeRequest(t, owner.ID)
 
 	rec := outcomesRequest(t, http.MethodPost, "/api/v1/outcomes", session, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create: %d %s", rec.Code, rec.Body)
-	}
-	var created models.OutcomeResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
+	created := raptor.DecodeJSON[models.OutcomeResponse](t, rec, http.StatusCreated)
 	if created.ID == 0 || created.CreatedAt.IsZero() {
 		t.Fatalf("create must return the stored row: %+v", created)
 	}
@@ -77,22 +65,13 @@ func TestOutcomesOwnerLifecycle(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update: %d %s", rec.Code, rec.Body)
 	}
-	var updated models.OutcomeResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
-		t.Fatal(err)
-	}
+	updated := raptor.DecodeJSON[models.OutcomeResponse](t, rec, http.StatusOK)
 	if updated.Name != "Updated" {
 		t.Fatalf("the update did not persist: %+v", updated)
 	}
 
 	rec = outcomesRequest(t, http.MethodGet, "/api/v1/outcomes", session, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list: %d %s", rec.Code, rec.Body)
-	}
-	var listed models.OutcomeResponses
-	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil {
-		t.Fatal(err)
-	}
+	listed := raptor.DecodeJSON[models.OutcomeResponses](t, rec, http.StatusOK)
 	if !slices.ContainsFunc(listed, func(x models.OutcomeResponse) bool { return x.ID == created.ID }) {
 		t.Fatalf("the list does not include the new outcome: %+v", listed)
 	}
@@ -172,25 +151,13 @@ func TestOutcomesParentIsImmutable(t *testing.T) {
 	req.CourseID = otherCourse.ID
 	path := fmt.Sprintf("/api/v1/outcomes/%d", outcome.ID)
 	rec := outcomesRequest(t, http.MethodPut, path, session, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("update: %d %s", rec.Code, rec.Body)
-	}
-	var updated models.OutcomeResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
-		t.Fatal(err)
-	}
+	updated := raptor.DecodeJSON[models.OutcomeResponse](t, rec, http.StatusOK)
 	if updated.CourseID != outcome.CourseID {
 		t.Errorf("the course must not change: CourseID = %v, want %v", updated.CourseID, outcome.CourseID)
 	}
 
 	rec = outcomesRequest(t, http.MethodGet, path, session, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("show: %d %s", rec.Code, rec.Body)
-	}
-	var current models.OutcomeResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
-		t.Fatal(err)
-	}
+	current := raptor.DecodeJSON[models.OutcomeResponse](t, rec, http.StatusOK)
 	if current.CourseID != outcome.CourseID {
 		t.Errorf("the course must not change: CourseID = %v, want %v", current.CourseID, outcome.CourseID)
 	}
