@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The `TestResponseHeaders` test that `raptor new` generates checks `/healthz` instead of the Hello sample, so deleting the sample doesn't break it.
+- The READMEs say which log lines carry `request_id`: the request log and Raptor's own error lines, not the app's own, which read it with `ctx.Get(requestid.Key)` or `requestid.FromContext`.
+
 ## v1.5.0 — 2026-09-30
 
 ### Changed

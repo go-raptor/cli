@@ -14,9 +14,9 @@ func TestHealthProbes(t *testing.T) {
 	}
 }
 
-// requestid and secure set their headers on every response.
+// requestid and secure set their headers on every response, the probes' included.
 func TestResponseHeaders(t *testing.T) {
-	rec := app.TestGet("/api/v1/hello")
+	rec := app.TestGet("/healthz")
 	for _, name := range []string{"X-Request-Id", "X-Content-Type-Options", "Content-Security-Policy"} {
 		if rec.Header().Get(name) == "" {
 			t.Errorf("the response has no %s header", name)

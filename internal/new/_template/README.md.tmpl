@@ -72,7 +72,7 @@ A frontend that must live on another origin needs the `cors` middleware (`github
 ## Operations
 
 - `GET /healthz` (liveness) and `GET /readyz` (readiness) are answered by Raptor's built-in health controller. Readiness fails from the moment shutdown begins and, once the app has a database, whenever it doesn't answer a ping. Give the readiness probe a timeout of at least 3 seconds, and keep both routes out of any authentication middleware (`raptor.UseExcept(..., "Health")`).
-- Every response carries an `X-Request-Id`, reused from a valid incoming one, and log lines carry it as `request_id`.
+- Every response carries an `X-Request-Id`, reused from a valid incoming one. The request log and Raptor's own error and panic lines carry it as `request_id`; to put it on your own log lines, read it in a handler with `ctx.Get(requestid.Key)`, or in a service that gets the request's context with `requestid.FromContext(ctx)`.
 - The `secure` middleware sets `X-Content-Type-Options`, `Referrer-Policy`, a no-framing policy and `Cross-Origin-Opener-Policy` on every response.
 
 In production (`.raptor.prod.yaml` or environment variables), also set:

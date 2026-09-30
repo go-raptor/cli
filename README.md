@@ -20,7 +20,7 @@ raptor new github.com/you/shop
 
 creates an API-only project in `shop/`. It is same-origin: there is no CORS, and the csrf middleware (`github.com/go-raptor/middlewares/csrf`) rejects cross-origin writes from browsers while letting other clients through.
 
-Every project also registers `requestid` (an `X-Request-Id` on every response and a `request_id` on every log line) and `secure` (security headers), and routes `GET /healthz` and `GET /readyz` to Raptor's built-in health controller. The generated README lists the production settings: `server.shutdown_delay`, so readiness fails before the listener closes, and `app.secure_hsts_max_age`, which turns on HSTS.
+Every project also registers `requestid` (an `X-Request-Id` on every response, and a `request_id` on the request log and Raptor's own error lines) and `secure` (security headers), and routes `GET /healthz` and `GET /readyz` to Raptor's built-in health controller. The generated README lists the production settings: `server.shutdown_delay`, so readiness fails before the listener closes, and `app.secure_hsts_max_age`, which turns on HSTS.
 
 `--spa` also serves a single-page frontend (a SvelteKit `adapter-static` build, or any equivalent) from `public/` with `controllers/spa`, on the same origin:
 
