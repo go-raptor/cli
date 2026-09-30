@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.5.0 — 2026-09-30
 
 ### Changed
 
@@ -10,6 +10,10 @@
 ### Added
 
 - `raptor new` registers the `requestid` and `secure` middlewares (order: requestid, logger, secure, csrf), routes `GET /healthz` and `GET /readyz` to Raptor's built-in health controller with a test for both, and documents `server.shutdown_delay` and `app.secure_hsts_max_age` in the generated README.
+
+### Fixed
+
+- Reading a module's version from `go.mod` (for the raptor floor and the spa/v2 check) now looks only at `require` directives. A `replace` or `exclude` block that named the module before the `require` block used to stand in for its version.
 
 ### Upgrading
 
