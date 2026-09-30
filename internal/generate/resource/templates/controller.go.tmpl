@@ -2,14 +2,8 @@ package controllers
 
 import (
 	"net/http"
-{{- if .Parent}}
-	"strconv"
-{{- end}}
 
 	"github.com/go-raptor/raptor/v4"
-{{- if .Parent}}
-	"github.com/go-raptor/raptor/v4/errs"
-{{- end}}
 	"{{.Module}}/app/models"
 	"{{.Module}}/app/services"
 )
@@ -30,12 +24,12 @@ func (c *{{.Plural}}Controller) Index(ctx *raptor.Context) error {
 	}
 
 	var {{.PluralLocal}} models.{{.Plural}}
-	if raw := ctx.QueryParam("{{.Parent.JSON}}"); raw == "" {
+	if ctx.QueryParam("{{.Parent.JSON}}") == "" {
 		{{.PluralLocal}}, err = c.{{.Plural}}.List(user.ID)
 	} else {
-		{{.Parent.Var}}ID, parseErr := strconv.ParseInt(raw, 10, 64)
+		{{.Parent.Var}}ID, parseErr := ctx.QueryInt64("{{.Parent.JSON}}") // malformed is a 400
 		if parseErr != nil {
-			return errs.NewErrorBadRequest("Invalid {{.Parent.JSON}}")
+			return parseErr
 		}
 		{{.PluralLocal}}, err = c.{{.Plural}}.ListBy{{.Parent.Name}}({{.Parent.Var}}ID, user.ID) // 404 if the {{.Parent.LabelLower}} isn't theirs
 	}
@@ -63,7 +57,7 @@ func (c *{{.Plural}}Controller) Show(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}
@@ -80,7 +74,7 @@ func (c *{{.Plural}}Controller) Create(ctx *raptor.Context) error {
 		return err
 	}
 	var req models.{{.Name}}Request
-	if err := bindJSON(ctx, &req); err != nil {
+	if err := ctx.Bind(&req); err != nil {
 		return err
 	}
 	if issues := c.Validation.{{.Name}}Schema.Validate(&req); len(issues) > 0 {
@@ -105,12 +99,12 @@ func (c *{{.Plural}}Controller) Update(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}
 	var req models.{{.Name}}Request
-	if err := bindJSON(ctx, &req); err != nil {
+	if err := ctx.Bind(&req); err != nil {
 		return err
 	}
 	if issues := c.Validation.{{.Name}}Schema.Validate(&req); len(issues) > 0 {
@@ -129,7 +123,7 @@ func (c *{{.Plural}}Controller) Destroy(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -228,14 +230,49 @@ var harnessHelpers = []struct{ name, sig string }{
 	{"withSession", "func(*http.Cookie) raptor.TestRequestOption"},
 }
 
-func countDefined(set map[string]bool, names ...string) int {
-	n := 0
-	for _, name := range names {
-		if set[name] {
-			n++
-		}
+// raptorModule is at least minRaptor in a project the generator writes to: the generated code
+// calls Context.ParamInt64 and QueryInt64, relies on Bind's 415 for its CSRF defense, sets
+// DatabaseService.Ctx from Resources.AppContext, and its tests use raptor.JSONBody, DecodeJSON
+// and WithCookie.
+const (
+	raptorModule = "github.com/go-raptor/raptor/v4"
+	minRaptor    = "v4.6.0"
+)
+
+// atLeast reports whether the module version have is want or later. want is a release; have may
+// carry build metadata, or a pre-release (as a pseudo-version does), which sorts before its
+// release.
+func atLeast(have, want string) bool {
+	h, pre, ok := parseVersion(have)
+	w, _, wok := parseVersion(want)
+	if !ok || !wok {
+		return false
 	}
-	return n
+	c := slices.Compare(h[:], w[:])
+	return c > 0 || c == 0 && !pre
+}
+
+// parseVersion splits vMAJOR.MINOR.PATCH[-pre][+build] into its numbers and whether it has a
+// pre-release.
+func parseVersion(v string) (core [3]int, pre, ok bool) {
+	rest, found := strings.CutPrefix(v, "v")
+	if !found {
+		return core, false, false
+	}
+	rest, _, _ = strings.Cut(rest, "+")
+	rest, _, pre = strings.Cut(rest, "-")
+	parts := strings.Split(rest, ".")
+	if len(parts) != 3 {
+		return core, false, false
+	}
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return core, false, false
+		}
+		core[i] = n
+	}
+	return core, pre, true
 }
 
 // createsUsers finds the users table's CREATE TABLE, quoted or not, with IF NOT EXISTS or a
@@ -246,6 +283,12 @@ var createsUsers = regexp.MustCompile(`(?i)\bcreate\s+table\s+(if\s+not\s+exists
 func (p *Project) decide(res *Resource, v *view) (*decisions, error) {
 	if !strings.Contains(p.GoMod, "github.com/go-raptor/connectors/bun/postgres") {
 		return nil, errors.New("the project has no Bun Postgres connector; run `raptor db init postgres --bun` first")
+	}
+	if have := p.requirement(raptorModule); !atLeast(have, minRaptor) {
+		if have == "" {
+			have = "none"
+		}
+		return nil, fmt.Errorf("the generated code needs %s %s or later, and go.mod requires %s; run `go get %s@latest` first", raptorModule, minRaptor, have, raptorModule)
 	}
 	user := p.Models["User"]
 	if user == nil || !user.HasColumn("id") || !p.Services.has("AuthService", "CurrentUser") || !createsUsers.MatchString(p.Migrations) {
@@ -274,12 +317,14 @@ func (p *Project) decide(res *Resource, v *view) (*decisions, error) {
 		d.DatabaseService = true
 	}
 	d.ValidationService = !p.Services.Types["ValidationService"]
-	switch countDefined(p.Controllers.Funcs, "bindJSON", "validationFailed", "pathID") {
-	case 3:
-	case 0:
-		d.Helpers = true
-	default:
-		problems = append(problems, "app/controllers defines only some of bindJSON, validationFailed and pathID")
+	// Apps generated before CLI v1.5.0 also define bindJSON and pathID; the new code calls
+	// neither, so they stay until the app drops them.
+	if !p.Controllers.Funcs["validationFailed"] {
+		if helpers := filepath.Join("app", "controllers", "helpers.go"); exists(helpers) {
+			problems = append(problems, helpers+" exists but does not declare validationFailed, which the generated controller calls; add it (patterns.md in the raptor-api-conventions skill has it) or move that file aside")
+		} else {
+			d.Helpers = true
+		}
 	}
 	d.MaxChars = v.UsesMaxChars && !p.ModelsPkg.Funcs["maxChars"]
 	if validation := filepath.Join("app", "models", "validation.go"); d.MaxChars && exists(validation) {

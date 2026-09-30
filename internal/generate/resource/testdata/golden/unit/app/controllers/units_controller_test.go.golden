@@ -153,6 +153,15 @@ func TestUnitsUnderStrangersOutcome(t *testing.T) {
 	}
 }
 
+// A malformed ?outcomeId= is the client's mistake: a 400, never the unfiltered list.
+func TestUnitsMalformedOutcomeFilter(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	session := login(t, owner.Username)
+	if rec := unitsRequest(t, http.MethodGet, "/api/v1/units?outcomeId=abc", session, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("list with ?outcomeId=abc: %d, want 400", rec.Code)
+	}
+}
+
 func TestUnitsCannotMoveToStrangersOutcome(t *testing.T) {
 	suffix := time.Now().UnixNano()
 	owner := newUser(t, fmt.Sprintf("owner-%d", suffix))

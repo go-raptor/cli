@@ -33,7 +33,7 @@ func (c *CoursesController) Show(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (c *CoursesController) Create(ctx *raptor.Context) error {
 		return err
 	}
 	var req models.CourseRequest
-	if err := bindJSON(ctx, &req); err != nil {
+	if err := ctx.Bind(&req); err != nil {
 		return err
 	}
 	if issues := c.Validation.CourseSchema.Validate(&req); len(issues) > 0 {
@@ -68,12 +68,12 @@ func (c *CoursesController) Update(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}
 	var req models.CourseRequest
-	if err := bindJSON(ctx, &req); err != nil {
+	if err := ctx.Bind(&req); err != nil {
 		return err
 	}
 	if issues := c.Validation.CourseSchema.Validate(&req); len(issues) > 0 {
@@ -92,7 +92,7 @@ func (c *CoursesController) Destroy(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}

@@ -2,12 +2,10 @@ package controllers
 
 import (
 	"net/http"
-	"strconv"
 
 	"example.com/shop/app/models"
 	"example.com/shop/app/services"
 	"github.com/go-raptor/raptor/v4"
-	"github.com/go-raptor/raptor/v4/errs"
 )
 
 type OutcomesController struct {
@@ -26,12 +24,12 @@ func (c *OutcomesController) Index(ctx *raptor.Context) error {
 	}
 
 	var outcomes models.Outcomes
-	if raw := ctx.QueryParam("courseId"); raw == "" {
+	if ctx.QueryParam("courseId") == "" {
 		outcomes, err = c.Outcomes.List(user.ID)
 	} else {
-		courseID, parseErr := strconv.ParseInt(raw, 10, 64)
+		courseID, parseErr := ctx.QueryInt64("courseId") // malformed is a 400
 		if parseErr != nil {
-			return errs.NewErrorBadRequest("Invalid courseId")
+			return parseErr
 		}
 		outcomes, err = c.Outcomes.ListByCourse(courseID, user.ID) // 404 if the course isn't theirs
 	}
@@ -46,7 +44,7 @@ func (c *OutcomesController) Show(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}
@@ -63,7 +61,7 @@ func (c *OutcomesController) Create(ctx *raptor.Context) error {
 		return err
 	}
 	var req models.OutcomeRequest
-	if err := bindJSON(ctx, &req); err != nil {
+	if err := ctx.Bind(&req); err != nil {
 		return err
 	}
 	if issues := c.Validation.OutcomeSchema.Validate(&req); len(issues) > 0 {
@@ -81,12 +79,12 @@ func (c *OutcomesController) Update(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}
 	var req models.OutcomeRequest
-	if err := bindJSON(ctx, &req); err != nil {
+	if err := ctx.Bind(&req); err != nil {
 		return err
 	}
 	if issues := c.Validation.OutcomeSchema.Validate(&req); len(issues) > 0 {
@@ -105,7 +103,7 @@ func (c *OutcomesController) Destroy(ctx *raptor.Context) error {
 	if err != nil {
 		return err
 	}
-	id, err := pathID(ctx)
+	id, err := ctx.ParamInt64("id")
 	if err != nil {
 		return err
 	}

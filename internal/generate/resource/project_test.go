@@ -163,7 +163,11 @@ func TestDecideRequirements(t *testing.T) {
 		}},
 		{"no auth stack", "Course", "auth stack", func(t *testing.T) { removeFile(t, "app/services/auth_service.go") }},
 		{"existing model", "Division", "model Division already exists", func(*testing.T) {}},
-		{"partial helpers", "Course", "only some of bindJSON", func(t *testing.T) {
+		{"raptor too old", "Course", "the generated code needs github.com/go-raptor/raptor/v4 v4.6.0 or later, and go.mod requires v4.5.0", func(t *testing.T) {
+			replaceInFile(t, "go.mod", fixtureRaptor, "\tgithub.com/go-raptor/raptor/v4 v4.5.0")
+		}},
+		// The generated helpers.go can't be written beside an existing one.
+		{"helpers.go without validationFailed", "Course", "app/controllers/helpers.go exists but does not declare validationFailed", func(t *testing.T) {
 			writeFile(t, "app/controllers/helpers.go", "package controllers\n\nfunc bindJSON() {}\n")
 		}},
 		// Finding I-8: the actual reason, not "already exists".
@@ -183,6 +187,54 @@ func TestDecideRequirements(t *testing.T) {
 				t.Fatalf("error = %v, want it to mention %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// Apps generated before raptor v4.6.0 keep their bindJSON and pathID helpers; the new code
+// calls neither, and validationFailed may live in any file.
+func TestDecideKeepsExistingHelpers(t *testing.T) {
+	for name, files := range map[string]map[string]string{
+		"legacy helpers.go":          {"app/controllers/helpers.go": "package controllers\n\nfunc bindJSON() {}\n\nfunc validationFailed() {}\n\nfunc pathID() {}\n"},
+		"validationFailed elsewhere": {"app/controllers/errors.go": "package controllers\n\nfunc validationFailed() {}\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			copyFixture(t)
+			for path, src := range files {
+				writeFile(t, path, src)
+			}
+			d, err := decideFor(t, "Course", nil, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Helpers {
+				t.Error("helpers.go must not be generated when validationFailed exists")
+			}
+		})
+	}
+}
+
+func TestAtLeast(t *testing.T) {
+	for _, tt := range []struct {
+		have string
+		want bool
+	}{
+		{"v4.6.0", true},
+		{"v4.6.1", true},
+		{"v4.10.0", true},
+		{"v5.0.0", true},
+		{"v4.7.0-0.20261001120000-abcdefabcdef", true}, // pseudo-version after v4.6.x
+		{"v4.6.1-0.20261001120000-abcdefabcdef", true},
+		{"v4.6.0+incompatible", true},
+		{"v4.5.9", false},
+		{"v4.6.0-rc.1", false}, // a pre-release comes before its release
+		{"v4.6.0-0.20260901120000-abcdefabcdef", false},
+		{"v3.9.9", false},
+		{"", false},
+		{"latest", false},
+	} {
+		if got := atLeast(tt.have, "v4.6.0"); got != tt.want {
+			t.Errorf("atLeast(%q, v4.6.0) = %v, want %v", tt.have, got, tt.want)
+		}
 	}
 }
 

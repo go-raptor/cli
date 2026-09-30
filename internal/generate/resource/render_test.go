@@ -180,6 +180,8 @@ func TestRenderControllers(t *testing.T) {
 		"if err := c.Seminars.Create(seminar); err != nil {",
 		"return ctx.Data(models.NewSeminarResponse(seminar), http.StatusCreated)",
 		"seminar := &models.Seminar{ID: id} // identity from the path, state from the body",
+		"id, err := ctx.ParamInt64(\"id\")",
+		"if err := ctx.Bind(&req); err != nil { return err }",
 		"return ctx.NoContent()",
 	} {
 		loose(t, flat, want)
@@ -187,8 +189,8 @@ func TestRenderControllers(t *testing.T) {
 
 	child := mustRender(t, "controller.go.tmpl", mustView(t, "Topic", []string{"name:string"}, "Course", false))
 	for _, want := range []string{
-		"if raw := ctx.QueryParam(\"courseId\"); raw == \"\" {",
-		"return errs.NewErrorBadRequest(\"Invalid courseId\")",
+		"if ctx.QueryParam(\"courseId\") == \"\" {",
+		"courseID, parseErr := ctx.QueryInt64(\"courseId\") // malformed is a 400 if parseErr != nil { return parseErr }",
 		"topics, err = c.Topics.ListByCourse(courseID, user.ID)",
 		"topic := req.ToModel()",
 		"if err := c.Topics.Create(topic, user.ID); err != nil {",
@@ -204,17 +206,14 @@ func TestRenderBootstrapFiles(t *testing.T) {
 			"func (s *DatabaseService) Conn() *bun.DB {",
 			"func (s *DatabaseService) HandleAffected(res sql.Result, err error, notFound string) error {",
 			"case \"23505\": // unique_violation",
+			"func (s *DatabaseService) Setup() error { s.Ctx = s.AppContext() return nil }",
 		},
 		"validation_service.go.tmpl": {
 			"\"example.com/shop/app/models\"",
 			"SeminarSchema *zog.StructSchema",
 			"s.SeminarSchema = models.SeminarSchema() return nil",
 		},
-		"helpers.go.tmpl": {
-			"func bindJSON(ctx *raptor.Context, v any) error {",
-			"func validationFailed(issues zog.ZogIssueList) error {",
-			"func pathID(ctx *raptor.Context) (int64, error) {",
-		},
+		"helpers.go.tmpl":    {"func validationFailed(issues zog.ZogIssueList) error {"},
 		"validation.go.tmpl": {"func maxChars(n int) (zog.BoolTFunc[*string], zog.TestOption) {"},
 		"schemas_test.go.tmpl": {
 			"package models_test",
@@ -237,6 +236,13 @@ func TestRenderBootstrapFiles(t *testing.T) {
 		src := mustRender(t, tmpl, v)
 		for _, want := range wants {
 			loose(t, src, want)
+		}
+	}
+	// ctx.Bind and ctx.ParamInt64 (raptor v4.6.0) replaced these.
+	helpers := mustRender(t, "helpers.go.tmpl", v)
+	for _, gone := range []string{"bindJSON", "pathID"} {
+		if strings.Contains(helpers, gone) {
+			t.Errorf("helpers.go still defines %s", gone)
 		}
 	}
 }

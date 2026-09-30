@@ -142,6 +142,15 @@ func TestRecordsUnderStrangersUnit(t *testing.T) {
 	}
 }
 
+// A malformed ?unitId= is the client's mistake: a 400, never the unfiltered list.
+func TestRecordsMalformedUnitFilter(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	session := login(t, owner.Username)
+	if rec := recordsRequest(t, http.MethodGet, "/api/v1/records?unitId=abc", session, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("list with ?unitId=abc: %d, want 400", rec.Code)
+	}
+}
+
 func TestRecordsParentIsImmutable(t *testing.T) {
 	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
 	session := login(t, owner.Username)

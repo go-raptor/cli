@@ -153,6 +153,15 @@ func TestOutcomesUnderStrangersCourse(t *testing.T) {
 	}
 }
 
+// A malformed ?courseId= is the client's mistake: a 400, never the unfiltered list.
+func TestOutcomesMalformedCourseFilter(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	session := login(t, owner.Username)
+	if rec := outcomesRequest(t, http.MethodGet, "/api/v1/outcomes?courseId=abc", session, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("list with ?courseId=abc: %d, want 400", rec.Code)
+	}
+}
+
 func TestOutcomesParentIsImmutable(t *testing.T) {
 	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
 	session := login(t, owner.Username)

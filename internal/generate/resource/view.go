@@ -158,7 +158,7 @@ func (v *view) testFuncs() []string {
 		fns = append(fns, "Test"+v.Plural+"CreateValidation")
 	}
 	if v.Parent != nil {
-		fns = append(fns, "Test"+v.Plural+"UnderStrangers"+v.Parent.Name)
+		fns = append(fns, "Test"+v.Plural+"UnderStrangers"+v.Parent.Name, "Test"+v.Plural+"Malformed"+v.Parent.Name+"Filter")
 		if v.Movable {
 			fns = append(fns, "Test"+v.Plural+"CannotMoveToStrangers"+v.Parent.Name)
 		} else {

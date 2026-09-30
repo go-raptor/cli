@@ -161,6 +161,15 @@ func Test{{.Plural}}UnderStrangers{{.Parent.Name}}(t *testing.T) {
 		t.Errorf("list under the stranger's {{.Parent.LabelLower}}: %d, want 404", rec.Code)
 	}
 }
+
+// A malformed ?{{.Parent.JSON}}= is the client's mistake: a 400, never the unfiltered list.
+func Test{{.Plural}}Malformed{{.Parent.Name}}Filter(t *testing.T) {
+	owner := newUser(t, fmt.Sprintf("owner-%d", time.Now().UnixNano()))
+	session := login(t, owner.Username)
+	if rec := {{.PluralVar}}Request(t, http.MethodGet, "/api/v1/{{.Route}}?{{.Parent.JSON}}=abc", session, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("list with ?{{.Parent.JSON}}=abc: %d, want 400", rec.Code)
+	}
+}
 {{- if .Movable}}
 
 func Test{{.Plural}}CannotMoveToStrangers{{.Parent.Name}}(t *testing.T) {
