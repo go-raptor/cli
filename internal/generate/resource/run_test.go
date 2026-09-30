@@ -259,12 +259,14 @@ func TestRunSkipsTestsBesideAnotherSetup(t *testing.T) {
 	}
 }
 
+// fixtureRaptor is the fixture's raptor require line, which tests rewrite.
+const fixtureRaptor = "\tgithub.com/go-raptor/raptor/v4 v4.6.0"
+
 // withSPA makes the fixture require controllers/spa at version, as an app serving its frontend
 // does.
 func withSPA(t *testing.T, version string) {
 	t.Helper()
-	replaceInFile(t, "go.mod", "\tgithub.com/go-raptor/raptor/v4 v4.4.0",
-		"\tgithub.com/go-raptor/controllers/spa/v2 "+version+"\n\tgithub.com/go-raptor/raptor/v4 v4.4.0")
+	replaceInFile(t, "go.mod", fixtureRaptor, "\tgithub.com/go-raptor/controllers/spa/v2 "+version+"\n"+fixtureRaptor)
 }
 
 // A generated TestMain boots the whole app, and a test run has no frontend build, so an app
