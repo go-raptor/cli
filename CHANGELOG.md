@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `raptor g resource` generates code for raptor v4.6.0: controllers bind with `ctx.Bind` (which answers 415 for a body not declared JSON, 400 for malformed JSON) and parse ids with `ctx.ParamInt64` and `ctx.QueryInt64`; `DatabaseService.Setup` sets `Ctx` to `s.AppContext()`, which is cancelled at shutdown; the tests use `raptor.JSONBody`, `raptor.DecodeJSON` and `raptor.WithCookie`. The generated `helpers.go` keeps only `validationFailed`, and the harness no longer defines `withSession`.
+- A child resource's tests also check that a malformed parent filter (`?courseId=abc`) is a 400.
+
+### Added
+
+- `raptor new` registers the `requestid` and `secure` middlewares (order: requestid, logger, secure, csrf), routes `GET /healthz` and `GET /readyz` to Raptor's built-in health controller with a test for both, and documents `server.shutdown_delay` and `app.secure_hsts_max_age` in the generated README.
+
+### Upgrading
+
+- `raptor g resource` now requires `github.com/go-raptor/raptor/v4` v4.6.0 or later, and says so with the `go get` command to run. Existing `bindJSON`, `pathID` and `withSession` helpers keep compiling and can be deleted once nothing calls them. An `app/controllers/helpers.go` that doesn't declare `validationFailed` is reported, since the generated one can't be written beside it.
+
 ## v1.4.0 — 2026-09-27
 
 ### Changed
