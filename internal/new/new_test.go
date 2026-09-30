@@ -118,6 +118,42 @@ func TestNoVariantIsCrossOrigin(t *testing.T) {
 	}
 }
 
+// Every project starts with request IDs, security headers and health probes. requestid runs
+// first, so every later log line carries the ID; secure runs before csrf, so its headers reach
+// the 403 too. Raptor's built-in HealthController answers the probes.
+func TestNewProjectWiresRequestIDSecureAndHealth(t *testing.T) {
+	order := []string{
+		"raptor.Use(&requestid.RequestIDMiddleware{})",
+		"raptor.Use(&logger.LoggerMiddleware{})",
+		"raptor.Use(&secure.SecureMiddleware{})",
+		"raptor.Use(&csrf.CSRFMiddleware{})",
+	}
+	for variant, dir := range variants(t) {
+		mw := readFile(t, dir, "config/components/middlewares.go")
+		last := -1
+		for _, use := range order {
+			i := strings.Index(mw, use)
+			if i <= last {
+				t.Errorf("%s: middlewares.go does not register %s after %v:\n%s", variant, use, order[:slices.Index(order, use)], mw)
+				break
+			}
+			last = i
+		}
+		r := routes(t, dir)
+		for path, want := range map[string]string{"/healthz": "Health.Live", "/readyz": "Health.Ready"} {
+			if m, _ := r[path].(map[string]any); m["GET"] != want {
+				t.Errorf("%s: GET %s is not routed to %s: %v", variant, path, want, r)
+			}
+		}
+		readme := readFile(t, dir, "README.md")
+		for _, setting := range []string{"server.shutdown_delay", "app.secure_hsts_max_age"} {
+			if !strings.Contains(readme, setting) {
+				t.Errorf("%s: README.md does not mention %s", variant, setting)
+			}
+		}
+	}
+}
+
 // routes is config/routes.yaml as the router reads it.
 func routes(t *testing.T, dir string) map[string]any {
 	t.Helper()

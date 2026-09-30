@@ -1,4 +1,9 @@
 routes:
+  # Liveness and readiness probes, answered by Raptor's built-in HealthController.
+  /healthz:
+    GET: Health.Live
+  /readyz:
+    GET: Health.Ready
   /api/v1:
     /hello:
       GET: Hello.Greet

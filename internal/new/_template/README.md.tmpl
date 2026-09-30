@@ -68,3 +68,14 @@ The API is same-origin: there is no CORS, and the csrf middleware rejects cross-
 
 A frontend that must live on another origin needs the `cors` middleware (`github.com/go-raptor/middlewares/cors`) registered in `config/components/middlewares.go`, its origin in `app.cors_allow_origins`, and the same origin in `app.csrf_trusted_origins`.
 {{- end}}
+
+## Operations
+
+- `GET /healthz` (liveness) and `GET /readyz` (readiness) are answered by Raptor's built-in health controller. Readiness fails from the moment shutdown begins and, once the app has a database, whenever it doesn't answer a ping. Give the readiness probe a timeout of at least 3 seconds, and keep both routes out of any authentication middleware (`raptor.UseExcept(..., "Health")`).
+- Every response carries an `X-Request-Id`, reused from a valid incoming one, and log lines carry it as `request_id`.
+- The `secure` middleware sets `X-Content-Type-Options`, `Referrer-Policy`, a no-framing policy and `Cross-Origin-Opener-Policy` on every response.
+
+In production (`.raptor.prod.yaml` or environment variables), also set:
+
+- `server.shutdown_delay` (`SERVER_SHUTDOWN_DELAY`): seconds the app keeps serving, with readiness failing, before it drains, so the load balancer stops routing here first. On Kubernetes, the readiness probe period times its failure threshold, plus a little; for example `10`.
+- `app.secure_hsts_max_age` (`APP_SECURE_HSTS_MAX_AGE`): turns on HSTS, in seconds, once the site is served only over HTTPS. Browsers then refuse plain HTTP for that long, so start small (`"300"`) and raise it (`"31536000"`) once HTTPS is settled.
