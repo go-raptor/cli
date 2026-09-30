@@ -213,6 +213,24 @@ func TestDecideKeepsExistingHelpers(t *testing.T) {
 	}
 }
 
+// requirement reads require directives only: a replace or exclude block that names the module
+// first must not stand in for its version.
+func TestRequirementReadsOnlyRequireDirectives(t *testing.T) {
+	const mod = "github.com/go-raptor/raptor/v4"
+	for name, tt := range map[string]struct{ gomod, want string }{
+		"require block":        {"module x\n\nrequire (\n\tgithub.com/go-raptor/raptor/v4 v4.6.0\n)\n", "v4.6.0"},
+		"single require":       {"module x\n\nrequire github.com/go-raptor/raptor/v4 v4.6.0 // indirect\n", "v4.6.0"},
+		"replace block first":  {"module x\n\nreplace (\n\tgithub.com/go-raptor/raptor/v4 => ../raptor/v4\n)\n\nrequire (\n\tgithub.com/go-raptor/raptor/v4 v4.6.0\n)\n", "v4.6.0"},
+		"exclude block first":  {"module x\n\nexclude (\n\tgithub.com/go-raptor/raptor/v4 v4.5.0\n)\n\nrequire github.com/go-raptor/raptor/v4 v4.6.0\n", "v4.6.0"},
+		"single replace first": {"module x\n\nreplace github.com/go-raptor/raptor/v4 v4.5.0 => ../raptor/v4\n\nrequire github.com/go-raptor/raptor/v4 v4.6.0\n", "v4.6.0"},
+		"not required":         {"module x\n\nreplace (\n\tgithub.com/go-raptor/raptor/v4 => ../raptor/v4\n)\n", ""},
+	} {
+		if got := (&Project{GoMod: tt.gomod}).requirement(mod); got != tt.want {
+			t.Errorf("%s: requirement = %q, want %q", name, got, tt.want)
+		}
+	}
+}
+
 func TestAtLeast(t *testing.T) {
 	for _, tt := range []struct {
 		have string

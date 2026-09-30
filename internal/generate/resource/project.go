@@ -199,10 +199,26 @@ func Inspect(module string) (*Project, error) {
 	return p, nil
 }
 
-// requirement is the version of module that go.mod requires, or "" when it requires none.
+// requirement is the version of module that go.mod requires, or "" when it requires none. It
+// reads only require directives, single-line or in a block: replace and exclude name modules too.
 func (p *Project) requirement(module string) string {
+	inRequire := false
 	for line := range strings.Lines(p.GoMod) {
-		fields := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "require "))
+		fields := strings.Fields(line)
+		switch {
+		case len(fields) == 0:
+			continue
+		case inRequire && fields[0] == ")":
+			inRequire = false
+			continue
+		case !inRequire && fields[0] == "require" && len(fields) == 2 && fields[1] == "(":
+			inRequire = true
+			continue
+		case !inRequire && fields[0] == "require":
+			fields = fields[1:]
+		case !inRequire:
+			continue
+		}
 		if len(fields) >= 2 && fields[0] == module {
 			return fields[1]
 		}
