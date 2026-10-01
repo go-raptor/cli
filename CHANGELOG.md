@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The generated `DatabaseService.HandleError` answers a cancelled context (shutdown cancelled the app context, or the client went away) with a 503 logged at debug, instead of an "Unhandled database error" at error level and a 500. A deadline still logs as an error.
+
 ## v1.5.1 — 2026-09-30
 
 ### Changed

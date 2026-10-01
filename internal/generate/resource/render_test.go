@@ -207,6 +207,7 @@ func TestRenderBootstrapFiles(t *testing.T) {
 			"func (s *DatabaseService) HandleAffected(res sql.Result, err error, notFound string) error {",
 			"case \"23505\": // unique_violation",
 			"func (s *DatabaseService) Setup() error { s.Ctx = s.AppContext() return nil }",
+			"if errors.Is(err, context.Canceled) { s.Log.Debug(\"Database call cancelled\", \"error\", err) return errs.NewErrorServiceUnavailable(\"Database call cancelled\") }",
 		},
 		"validation_service.go.tmpl": {
 			"\"example.com/shop/app/models\"",
